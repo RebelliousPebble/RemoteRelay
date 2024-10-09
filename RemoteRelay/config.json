@@ -1,0 +1,38 @@
+{
+  "Sources": [
+    {
+      "DisplayName": "Studio 1",
+      "Id": 1,
+      "RelayOutputPin": 17,
+      "GpiButtonInputPin": 27
+    },
+    {
+      "DisplayName": "Studio 2",
+      "Id": 2,
+      "RelayOutputPin": 18,
+      "GpiButtonInputPin": 22
+    }
+  ],
+  "Outputs": [
+    {
+      "DisplayName": "Newsroom 1",
+      "Id": 1,
+      "RelayOutputPin": 23,
+      "GpiButtonInputPin": 24
+    },
+    {
+      "DisplayName": "Newsroom 2",
+      "Id": 2,
+      "RelayOutputPin": 25,
+      "GpiButtonInputPin": 5
+    }
+  ],
+  "DefaultOutput": "Output 1",
+  "ServerName": "localhost",
+  "IsServer": true,
+  "Port": 8080,
+  "FlashOnSelect": true,
+  "ShowIpOnScreen": true,
+  "Logging": true,
+  "LogoFile": "path/to/logo.png"
+}
