@@ -5,9 +5,9 @@ using System.Device.Gpio;
 namespace RemoteRelay;
 
 [Serializable]
-public class OutputConfig
+public class RelayConfig
 {
-    public string? DisplayName { get; set; }
-    public Dictionary<string, int> OutputPins { get; set; }
-    public int? GpiButtonInputPin { get; set; }
+    public string SourceName { get; set; }
+    public string OutputName { get; set; }
+    public int RelayPin { get; set; }
 }

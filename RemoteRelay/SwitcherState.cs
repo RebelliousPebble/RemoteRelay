@@ -14,7 +14,7 @@ public class SwitcherState
     {
         _gpiController = new GpioController(PinNumberingScheme.Board, new LibGpiodDriver());
 
-        foreach (var source in settings.Sources)
+        /*foreach (var source in settings.Sources)
         {
             Source relay = new Source();
             foreach(var output in source.OutputPins)
@@ -28,7 +28,7 @@ public class SwitcherState
             }
 
             _sources.Add(relay);
-        }
+        }*/
         
     }
 

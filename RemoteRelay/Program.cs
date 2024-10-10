@@ -1,5 +1,6 @@
 ﻿using Avalonia;
 using System;
+using Avalonia.ReactiveUI;
 
 namespace RemoteRelay;
 
@@ -17,6 +18,6 @@ class Program
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
-            .LogToTrace().UseSkia();
+            .LogToTrace().UseSkia().UseReactiveUI();
     
 }

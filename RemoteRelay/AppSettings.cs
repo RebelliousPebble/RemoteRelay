@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace RemoteRelay;
 
@@ -7,10 +8,11 @@ namespace RemoteRelay;
 public struct AppSettings
 {
     //Sources
-    public List<OutputConfig> Sources { get; set; }
+    public List<RelayConfig> Routes { get; set; }
     public string? DefaultSource { get; set; }
-    public int Outputs { get; set; }
-    
+    public IReadOnlyCollection<string> Sources => Routes.Select(x => x.SourceName).Distinct().ToArray();
+    public IReadOnlyCollection<string> Outputs => Routes.Select(x => x.OutputName).Distinct().ToArray();
+
     //Communication
     public string ServerName { get; set; }
     public bool IsServer { get; set; }

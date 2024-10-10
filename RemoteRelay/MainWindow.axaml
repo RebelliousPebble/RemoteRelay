@@ -1,14 +1,27 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:RemoteRelay"
+        xmlns:local="clr-namespace:RemoteRelay"
+        xmlns:singleOutput="clr-namespace:RemoteRelay.SingleOutput"
+        xmlns:multiOutput="clr-namespace:RemoteRelay.MultiOutput"
+        xmlns:controls="clr-namespace:RemoteRelay.Controls"
         x:Class="RemoteRelay.MainWindow"
         Title="SourceSwitcher"
         Width="600" Height="300"
-        x:DataType="vm:MainWindowViewModel">
-
-    
-    <Grid IsVisible="{Binding MultiOutput}">
-       
-
-    </Grid>
+        x:DataType="local:MainWindowViewModel">
+        
+        <Window.DataTemplates>
+                <DataTemplate DataType="{x:Type singleOutput:SingleOutputViewModel}">
+                        <singleOutput:SingleOutputView/>
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type multiOutput:MultiOutputViewModel}">
+                        <multiOutput:MultiOutputView/>
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type controls:SourceButtonViewModel}">
+                        <controls:SourceButton/>
+                </DataTemplate>
+        </Window.DataTemplates>
+        
+        <ContentControl Content="{Binding OperationViewModel}">
+                
+        </ContentControl>
 </Window>
