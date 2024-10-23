@@ -1,12 +1,19 @@
 using System;
 using System.Device.Gpio;
 using System.Device.Gpio.Drivers;
+using System.Threading;
 
 namespace RemoteRelay
 {
     public class MockGpioDriver : GpioDriver
     {
         protected override int PinCount => 40;
+
+        protected override int ConvertPinNumberToLogicalNumberingScheme(int pinNumber)
+        {
+            Console.WriteLine($"Converting pin {pinNumber} to logical numbering scheme");
+            return pinNumber;
+        }
 
         protected override void OpenPin(int pinNumber)
         {
@@ -40,6 +47,12 @@ namespace RemoteRelay
             Console.WriteLine($"Writing value {value} to pin {pinNumber}");
         }
 
+        protected override WaitForEventResult WaitForEvent(int pinNumber, PinEventTypes eventTypes, CancellationToken cancellationToken)
+        {
+            Console.WriteLine($"Waiting for event {eventTypes} on pin {pinNumber}");
+            return new WaitForEventResult();
+        }
+
         protected override PinValue Read(int pinNumber)
         {
             Console.WriteLine($"Reading value from pin {pinNumber}");
@@ -56,7 +69,7 @@ namespace RemoteRelay
             Console.WriteLine($"Removing callback for pin {pinNumber}");
         }
 
-        protected override WaitForEventResult WaitForEvent(int pinNumber, PinEventTypes eventTypes, TimeSpan timeout)
+        protected WaitForEventResult WaitForEvent(int pinNumber, PinEventTypes eventTypes, TimeSpan timeout)
         {
             Console.WriteLine($"Waiting for event {eventTypes} on pin {pinNumber} with timeout {timeout}");
             return new WaitForEventResult();

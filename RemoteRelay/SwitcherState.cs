@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Device.Gpio;
 using System.Device.Gpio.Drivers;
@@ -77,8 +78,7 @@ public class SwitcherState
 
     private bool IsGpiEnvironment()
     {
-        // Add logic to determine if the environment supports GPI
-        // For example, check for the presence of specific hardware or OS
-        return false;
+        // Check if we are running on a Raspberry Pi or other unix-like environment
+        return Environment.OSVersion.Platform == PlatformID.Unix;
     }
 }
