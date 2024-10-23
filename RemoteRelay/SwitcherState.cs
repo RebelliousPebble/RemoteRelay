@@ -13,7 +13,15 @@ public class SwitcherState
 
     public SwitcherState(AppSettings settings)
     {
-        _gpiController = new GpioController(PinNumberingScheme.Board, new LibGpiodDriver());
+        if (IsGpiEnvironment())
+        {
+            _gpiController = new GpioController(PinNumberingScheme.Board, new LibGpiodDriver());
+        }
+        else
+        {
+            _gpiController = new GpioController(PinNumberingScheme.Board, new MockGpioDriver());
+        }
+
         foreach (var source in settings.Sources)
         {
             var newSource = new Source(source);
@@ -65,5 +73,12 @@ public class SwitcherState
         }
 
         return state;
+    }
+
+    private bool IsGpiEnvironment()
+    {
+        // Add logic to determine if the environment supports GPI
+        // For example, check for the presence of specific hardware or OS
+        return false;
     }
 }
