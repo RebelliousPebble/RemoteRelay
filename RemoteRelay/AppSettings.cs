@@ -10,9 +10,12 @@ public struct AppSettings
     //Sources
     public List<RelayConfig> Routes { get; set; }
     public string? DefaultSource { get; set; }
+    public Dictionary<string, int> PhysicalSourceButtons { get; set; }
     public IReadOnlyCollection<string> Sources => Routes.Select(x => x.SourceName).Distinct().ToArray();
     public IReadOnlyCollection<string> Outputs => Routes.Select(x => x.OutputName).Distinct().ToArray();
 
+    
+    
     //Communication
     public string ServerName { get; set; }
     public bool IsServer { get; set; }

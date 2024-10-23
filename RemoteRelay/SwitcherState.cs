@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Device.Gpio;
 using System.Device.Gpio.Drivers;
+using System.Linq;
 
 namespace RemoteRelay;
 
@@ -8,53 +9,61 @@ public class SwitcherState
 {
     private GpioController _gpiController;
     private List<Source> _sources = new();
-
+    private int outputCount = 0;
 
     public SwitcherState(AppSettings settings)
     {
         _gpiController = new GpioController(PinNumberingScheme.Board, new LibGpiodDriver());
-
-        /*foreach (var source in settings.Sources)
+        foreach (var source in settings.Sources)
         {
-            Source relay = new Source();
-            foreach(var output in source.OutputPins)
+            var newSource = new Source(source);
+            foreach (var output in settings.Routes.Where(x => x.SourceName == source).Select(x => x.OutputName).Distinct())
             {
-                relay.AddOutputPin(_gpiController, output.Value);
+                newSource.AddOutputPin(ref _gpiController, output, settings.Routes.First(x => x.SourceName == source && x.OutputName == output).RelayPin);
             }
-
-            if (source.GpiButtonInputPin != null)
-            {
-                relay.AddInputPin(_gpiController, source.GpiButtonInputPin.Value);
-            }
-
-            _sources.Add(relay);
-        }*/
-        
+            _sources.Add(newSource);
+        }
+        outputCount = settings.Outputs.Count;
     }
 
-    public void SwitchSource(int source, int output = 0)
+    public void SwitchSource(string source, string output)
     {
-        if (source < _sources.Count)
+        if (outputCount == 1)
         {
-            _sources[source].EnableOutput(output);
-        }
-        for (int i = 0; i < _sources.Count; i++)
-        {
-            if (i != source)
+            foreach (var x in _sources)
             {
-                _sources[i].DisableOutput();
+                if(x._sourceName == output)
+                {
+                    x.EnableOutput();
+                }
+                else
+                {
+                    x.DisableOutput();
+                }
             }
         }
+        else
+        {
+            foreach (var x in _sources)
+            {
+                if(x._sourceName == output)
+                {
+                    x.EnableOutput();
+                }
+            } 
+        }
+
     }
     
     // first value is index of source, second value is output index (-1 is not outputting)
-    public Dictionary<int, int> GetSystemState()
+    public Dictionary<string, string> GetSystemState()
     {
-        var state = new Dictionary<int, int>();
-        for (int i = 0; i < _sources.Count; i++)
+        var state = new Dictionary<string, string>();
+        foreach(var x in _sources)
         {
-            state[i] = _sources[i].GetStatus();
+            state.Add(x._sourceName, x.GetCurrentRoute());
         }
+
         return state;
     }
 }

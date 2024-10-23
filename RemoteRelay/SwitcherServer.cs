@@ -81,10 +81,7 @@ public class SwitcherServer
             string[] parts = data.Split(' ');
             if (parts.Length == 3)
             {
-                if (int.TryParse(parts[1], out int source) && int.TryParse(parts[2], out int output))
-                {
-                    _switcher.SwitchSource(source, output);
-                }
+                _switcher.SwitchSource(parts[1], parts[2]);
             }
         }
         

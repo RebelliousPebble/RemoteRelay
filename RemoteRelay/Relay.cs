@@ -2,46 +2,50 @@ using System;
 using System.Collections.Generic;
 using System.Device.Gpio;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 
 namespace RemoteRelay;
 
 public class Source
 {
-    private List<GpioPin> _relayOutputPins;
+    private Dictionary<string, GpioPin> _relayOutputPins;
     private GpioPin? _gpiButtonInputPin;
+    public string _sourceName { get; set; }
 
-    public Source()
+    public Source(string sourceName)
     {
-        _relayOutputPins = new List<GpioPin>();
+        _relayOutputPins = new Dictionary<string, GpioPin>();
+        _sourceName = sourceName;
     }
     
-    public void AddOutputPin(GpioController controller, int pinNumber)
+    public void AddOutputPin(ref GpioController controller, string outputName, int pinNumber)
     {
         var pin = controller.OpenPin(pinNumber, PinMode.Output);
-        _relayOutputPins.Add(pin);
+        _relayOutputPins.Add(outputName, pin);
     }
     
-    public void AddInputPin(GpioController controller, int pinNumber)
+    public void EnableOutput(string output = "")
     {
-        _gpiButtonInputPin = controller.OpenPin(pinNumber, PinMode.Input);
-        _gpiButtonInputPin.ValueChanged += GpiButtonInputPinOnValueChanged;
-    }
-
-    public void EnableOutput(int output = 0)
-    {
-        if(output < _relayOutputPins.Count)
+        if(_relayOutputPins.ContainsKey(output))
         {
-            _relayOutputPins[output].Write(PinValue.High);
+            throw new ArgumentException("Output pin not found");
         }
-        // write all other output pins low
-        for (int i = 0; i < _relayOutputPins.Count; i++)
+        else
         {
-            if (i != output)
+            foreach (var pin in _relayOutputPins)
             {
-                _relayOutputPins[i].Write(PinValue.Low);
+                if (pin.Key == output)
+                {
+                    pin.Value.Write(PinValue.High);
+                }
+                else
+                {
+                    pin.Value.Write(PinValue.Low);
+                }
             }
         }
+
     }
 
     public void DisableOutput()
@@ -49,27 +53,12 @@ public class Source
         // write all output pins low
         foreach (var pin in _relayOutputPins)
         {
-            pin.Write(PinValue.Low);
+            pin.Value.Write(PinValue.Low);
         }
-    }
-    //-1 = not routed, 0+ = output routed to.
-    public int GetStatus()
-    {
-        for (int i = 0; i < _relayOutputPins.Count; i++)
-        {
-            if (_relayOutputPins[i].Read() == PinValue.High)
-            {
-                return i;
-            }
-        }
-        return -1;
     }
     
-    private void GpiButtonInputPinOnValueChanged(object sender, PinValueChangedEventArgs pinvaluechangedeventargs)
+    public string GetCurrentRoute()
     {
-        if(_relayOutputPins.Count == 1)
-        {
-            _relayOutputPins[0].Write(pinvaluechangedeventargs.ChangeType == PinEventTypes.Rising ? PinValue.High : PinValue.Low);
-        }
+        return _relayOutputPins.FirstOrDefault(x => x.Value.Read() == PinValue.High).Key;
     }
 }
