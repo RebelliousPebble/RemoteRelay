@@ -33,6 +33,12 @@ public class SwitcherState
             _sources.Add(newSource);
         }
         outputCount = settings.Outputs.Count;
+        
+        // Set default source
+        if (settings.DefaultSource != null)
+        {
+            SwitchSource(settings.DefaultSource, settings.Routes.First(x => x.SourceName == settings.DefaultSource).OutputName);
+        }
     }
 
     public void SwitchSource(string source, string output)
@@ -41,9 +47,9 @@ public class SwitcherState
         {
             foreach (var x in _sources)
             {
-                if(x._sourceName == output)
+                if(x._sourceName == source)
                 {
-                    x.EnableOutput();
+                    x.EnableOutput(output);
                 }
                 else
                 {
@@ -55,9 +61,9 @@ public class SwitcherState
         {
             foreach (var x in _sources)
             {
-                if(x._sourceName == output)
+                if(x._sourceName == source)
                 {
-                    x.EnableOutput();
+                    x.EnableOutput(output);
                 }
             } 
         }

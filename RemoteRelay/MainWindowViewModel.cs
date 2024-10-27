@@ -31,7 +31,7 @@ public class MainWindowViewModel : ViewModelBase
         // Connect to the server (regardless of if a server or not)
         _client = new SwitcherClient(_settings.ServerName, _settings.Port);
         _client.Connect();
-        OperationViewModel = _settings.Outputs.Count == 1 ? new MultiOutputViewModel(_settings) : new SingleOutputViewModel(_settings);
+        OperationViewModel = _settings.Outputs.Count == 1 ? new MultiOutputViewModel() : new SingleOutputViewModel(_settings);
         // Get all unique inputs
         OperationViewModel = new SingleOutputViewModel(_settings);
     }

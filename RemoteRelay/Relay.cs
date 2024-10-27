@@ -27,7 +27,7 @@ public class Source
     
     public void EnableOutput(string output = "")
     {
-        if(_relayOutputPins.ContainsKey(output))
+        if(!_relayOutputPins.ContainsKey(output))
         {
             throw new ArgumentException("Output pin not found");
         }
@@ -35,14 +35,7 @@ public class Source
         {
             foreach (var pin in _relayOutputPins)
             {
-                if (pin.Key == output)
-                {
-                    pin.Value.Write(PinValue.High);
-                }
-                else
-                {
-                    pin.Value.Write(PinValue.Low);
-                }
+                pin.Value.Write(pin.Key == output ? PinValue.High : PinValue.Low);
             }
         }
 

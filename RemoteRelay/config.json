@@ -1,33 +1,26 @@
 {
-  "Sources": [
+  "Routes": [
     {
-      "DisplayName": "Studio 1",
-      "Id": 1,
-      "RelayOutputPin": 17,
-      "GpiButtonInputPin": 27
+      "SourceName": "Studio 1",
+      "OutputName": "Newsroom 1",
+      "RelayPin": 17
     },
     {
-      "DisplayName": "Studio 2",
-      "Id": 2,
-      "RelayOutputPin": 18,
-      "GpiButtonInputPin": 22
-    }
-  ],
-  "Outputs": [
-    {
-      "DisplayName": "Newsroom 1",
-      "Id": 1,
-      "RelayOutputPin": 23,
-      "GpiButtonInputPin": 24
+      "SourceName": "Studio 2",
+      "OutputName": "Newsroom 1",
+      "RelayPin": 18
     },
     {
-      "DisplayName": "Newsroom 2",
-      "Id": 2,
-      "RelayOutputPin": 25,
-      "GpiButtonInputPin": 5
+      "SourceName": "Studio 1",
+      "OutputName": "Newsroom 2",
+      "RelayPin": 19
     }
   ],
-  "DefaultOutput": "Output 1",
+  "DefaultSource": "Studio 1",
+  "PhysicalSourceButtons": {
+    "Studio 1": 27,
+    "Studio 2": 22
+  },
   "ServerName": "localhost",
   "IsServer": true,
   "Port": 8080,

@@ -52,20 +52,21 @@ public class SwitcherServer
         if (bytesRead > 0)
         {
             state.Sb.Append(Encoding.ASCII.GetString(state.Buffer, 0, bytesRead));
-            handler.BeginReceive(state.Buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReadCallback), state);
-        }
-        else
-        {
-            if (state.Sb.Length > 1)
+            if (state.Sb.ToString().EndsWith("\n"))
             {
-                string content = state.Sb.ToString();
+                string content = state.Sb.ToString().Trim();
                 Logger.Sink?.Log(LogEventLevel.Verbose, "SwitcherServer", this, $"Read {content.Length} bytes from socket. Data: {content}");
 
-
-                
                 // Process the data
                 ProcessData(content, handler);
             }
+            else
+            {
+                handler.BeginReceive(state.Buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReadCallback), state);
+            }
+        }
+        else
+        {
             handler.Close();
         }
     }
@@ -78,7 +79,7 @@ public class SwitcherServer
         if (data.StartsWith("SWITCH"))
         {
             // Messages to switch the source will be formatted as "SWITCH <source> <output>"
-            string[] parts = data.Split(' ');
+            string[] parts = data.Split('-');
             if (parts.Length == 3)
             {
                 _switcher.SwitchSource(parts[1], parts[2]);
@@ -90,7 +91,7 @@ public class SwitcherServer
         string response = "STATE";
         foreach (var source in state)
         {
-            response += $" {source.Key} {source.Value}";
+            response += $" {source.Key}-{source.Value}";
         }
         byte[] byteData = Encoding.ASCII.GetBytes(response);
         handler.BeginSend(byteData, 0, byteData.Length, 0, new AsyncCallback(SendCallback), handler);
@@ -100,6 +101,8 @@ public class SwitcherServer
     {
         Socket handler = (Socket)ar.AsyncState;
         handler.EndSend(ar);
+        handler.Shutdown(SocketShutdown.Both);
+        handler.Close();
     }
 }
 
