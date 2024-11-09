@@ -27,11 +27,7 @@ public class Source
     
     public void EnableOutput(string output = "")
     {
-        if(!_relayOutputPins.ContainsKey(output))
-        {
-            throw new ArgumentException("Output pin not found");
-        }
-        else
+        if(_relayOutputPins.ContainsKey(output))
         {
             foreach (var pin in _relayOutputPins)
             {

@@ -15,7 +15,6 @@ public class MainWindowViewModel : ViewModelBase
     
     private AppSettings _settings;
     private SwitcherServer? _server;
-    private SwitcherClient _client;
     public ViewModelBase OperationViewModel { get; set; }
     public MainWindowViewModel()
     {
@@ -29,8 +28,8 @@ public class MainWindowViewModel : ViewModelBase
         }
 
         // Connect to the server (regardless of if a server or not)
-        _client = new SwitcherClient(_settings.ServerName, _settings.Port);
-        _client.Connect();
+        //_client = new SwitcherClient(_settings.ServerName, _settings.Port);
+        //_client.Connect();
         OperationViewModel = _settings.Outputs.Count == 1 ? new MultiOutputViewModel() : new SingleOutputViewModel(_settings);
         // Get all unique inputs
         OperationViewModel = new SingleOutputViewModel(_settings);
