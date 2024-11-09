@@ -8,29 +8,27 @@ namespace RemoteRelay;
 
 public class SwitcherServer
 {
-    private Socket _socket;
-    private SwitcherState? _switcher;
+    private readonly AppSettings _config;
     private EndPoint _remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
-    private AppSettings _config;
+    private readonly Socket _socket;
+    private readonly SwitcherState? _switcher;
+    private readonly Socket _tcpSocket;
     public EventHandler<Dictionary<string, string>> stateChanged;
 
     public SwitcherServer(int port, AppSettings config)
     {
-        if (config.IsServer)
-        {
-            _switcher = new SwitcherState(config);
-        }
-        else
-        {
-            _switcher = null;
-        }
+        _switcher = config.IsServer ? new SwitcherState(config) : null;
         _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
         _socket.Bind(new IPEndPoint(IPAddress.Any, port));
         _config = config;
+
+        // if TcpMirrorAddress is set, connect to the remote server
+        if (string.IsNullOrEmpty(config.TcpMirrorAddress)) return;
+        _tcpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        _tcpSocket.Connect(config.TcpMirrorAddress, port);
     }
 
-    
-    
+
     public void Start()
     {
         Console.WriteLine("Waiting for a connection...");
@@ -39,19 +37,20 @@ public class SwitcherServer
 
     private void BeginReceive()
     {
-        byte[] buffer = new byte[StateObject.BufferSize];
-        _socket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref _remoteEndPoint, new AsyncCallback(ReceiveCallback), buffer);
+        var buffer = new byte[StateObject.BufferSize];
+        _socket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref _remoteEndPoint, ReceiveCallback,
+            buffer);
     }
-    
+
 
     private void ReceiveCallback(IAsyncResult ar)
     {
-        byte[] buffer = (byte[])ar.AsyncState;
-        int bytesRead = _socket.EndReceiveFrom(ar, ref _remoteEndPoint);
+        var buffer = (byte[])ar.AsyncState;
+        var bytesRead = _socket.EndReceiveFrom(ar, ref _remoteEndPoint);
 
         if (bytesRead > 0)
         {
-            string content = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
+            var content = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
             Console.WriteLine($"Read {content.Length} bytes from socket. Data: {content}");
 
             // Process the data
@@ -72,39 +71,37 @@ public class SwitcherServer
             if (data.StartsWith("RELAYREMOTE SWITCH"))
             {
                 // Messages to switch the source will be formatted as "RELAYREMOTE SWITCH-<source>-<output>"
-                string[] parts = data.Split('-');
-                if (parts.Length == 3)
-                {
-                    _switcher?.SwitchSource(parts[1], parts[2]);
-                }
+                var parts = data.Split('-');
+                if (parts.Length == 3) _switcher?.SwitchSource(parts[1], parts[2]);
             }
+
             SendStatusPacket();
-        }
-        
-        if (data.StartsWith("RELAYREMOTE GETSTATE"))
-        {
-            SendStatusPacket();
+
+            // if TcpMirrorAddress is set, mirror the switch command to the TCP server (expecting this to be something like Myriad or Zetta virtual hardware)
+            if (_config.TcpMirrorAddress != null)
+            {
+                var byteData = Encoding.ASCII.GetBytes(data);
+                _tcpSocket.BeginSend(byteData, 0, byteData.Length, SocketFlags.None, SendCallback, null);
+            }
         }
 
-        if (data.StartsWith("RELAYREMOTE STATE"))
-        {
-            ProcessStatusPacket(data);
-        }
-        
+        if (data.StartsWith("RELAYREMOTE GETSTATE")) SendStatusPacket();
+
+        if (data.StartsWith("RELAYREMOTE STATE")) ProcessStatusPacket(data);
     }
 
     private void SendStatusPacket()
     {
-        var state = _switcher.GetSystemState();
-        string response = "RELAYREMOTE STATE%";
-        foreach (var source in state)
-        {
-            response += $"{source.Key}-{source.Value}%";
-        }
+        var state = _switcher?.GetSystemState();
+        var response = "RELAYREMOTE STATE%";
+        if (state != null)
+            foreach (var source in state)
+                response += $"{source.Key}-{source.Value}%";
+
         // remove last %
         response = response.Substring(0, response.Length - 1);
-        byte[] byteData = Encoding.ASCII.GetBytes(response);
-        _socket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None, _remoteEndPoint, new AsyncCallback(SendCallback), null);
+        var byteData = Encoding.ASCII.GetBytes(response);
+        _socket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None, _remoteEndPoint, SendCallback, null);
     }
 
     private void ProcessStatusPacket(string data)
@@ -112,25 +109,23 @@ public class SwitcherServer
         //Message format: RELAYREMOTE STATE%<source>-<output>%<source>-<output>
         // put the state into a dictionary and call the event handler
         var state = new Dictionary<string, string>();
-        string[] parts = data.Split('%');
+        var parts = data.Split('%');
         foreach (var part in parts)
         {
-            string[] sourceOutput = part.Split('-');
-            if (sourceOutput.Length == 2)
-            {
-                state.Add(sourceOutput[0], sourceOutput[1]);
-            }
+            var sourceOutput = part.Split('-');
+            if (sourceOutput.Length == 2) state.Add(sourceOutput[0], sourceOutput[1]);
         }
+
         stateChanged?.Invoke(this, state);
     }
-    
+
     private void SendCallback(IAsyncResult ar)
     {
         _socket.EndSendTo(ar);
     }
 }
 
-public class StateObject
+public abstract class StateObject
 {
     public const int BufferSize = 1024;
 }

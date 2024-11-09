@@ -14,13 +14,13 @@ public struct AppSettings
     public IReadOnlyCollection<string> Sources => Routes.Select(x => x.SourceName).Distinct().ToArray();
     public IReadOnlyCollection<string> Outputs => Routes.Select(x => x.OutputName).Distinct().ToArray();
 
-    
-    
+
     //Communication
     public string ServerName { get; set; }
     public bool IsServer { get; set; }
     public int Port { get; set; }
-    
+    public string? TcpMirrorAddress { get; set; }
+
     //Options
     public bool FlashOnSelect { get; set; }
     public bool ShowIpOnScreen { get; set; }

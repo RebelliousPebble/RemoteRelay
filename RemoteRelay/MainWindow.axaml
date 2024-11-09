@@ -8,20 +8,18 @@
         Title="SourceSwitcher"
         Width="600" Height="300"
         x:DataType="local:MainWindowViewModel">
-        
-        <Window.DataTemplates>
-                <DataTemplate DataType="{x:Type singleOutput:SingleOutputViewModel}">
-                        <singleOutput:SingleOutputView/>
-                </DataTemplate>
-                <DataTemplate DataType="{x:Type multiOutput:MultiOutputViewModel}">
-                        <multiOutput:MultiOutputView/>
-                </DataTemplate>
-                <DataTemplate DataType="{x:Type controls:SourceButtonViewModel}">
-                        <controls:SourceButton/>
-                </DataTemplate>
-        </Window.DataTemplates>
-        
-        <ContentControl Content="{Binding OperationViewModel}">
-                
-        </ContentControl>
+
+    <Window.DataTemplates>
+        <DataTemplate DataType="{x:Type singleOutput:SingleOutputViewModel}">
+            <singleOutput:SingleOutputView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type multiOutput:MultiOutputViewModel}">
+            <multiOutput:MultiOutputView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type controls:SourceButtonViewModel}">
+            <controls:SourceButton />
+        </DataTemplate>
+    </Window.DataTemplates>
+
+    <ContentControl Content="{Binding OperationViewModel}" />
 </Window>
