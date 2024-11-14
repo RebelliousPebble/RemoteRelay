@@ -20,6 +20,7 @@ public struct AppSettings
     public bool IsServer { get; set; }
     public int Port { get; set; }
     public string? TcpMirrorAddress { get; set; }
+    public int? TcpMirrorPort { get; set; }
 
     //Options
     public bool FlashOnSelect { get; set; }

@@ -2,8 +2,56 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450" Width="800" Height="450"
+             xmlns:controls="clr-namespace:RemoteRelay.Controls"
+             xmlns:singleOutput="clr-namespace:RemoteRelay.SingleOutput"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              Background="MediumPurple"
-             x:Class="RemoteRelay.SingleOutput.SingleOutputView">
+             x:Class="RemoteRelay.SingleOutput.SingleOutputView"
+             x:DataType="singleOutput:SingleOutputViewModel">
+
+   <Grid ShowGridLines="True">
+      <Grid.RowDefinitions>
+         <RowDefinition Height="20*"/>
+         <RowDefinition Height="40*"/>
+         <RowDefinition Height="40*"/>
+      </Grid.RowDefinitions>
+      <Grid.ColumnDefinitions>
+         <ColumnDefinition/>
+         <ColumnDefinition/>
+         <ColumnDefinition/>
+      </Grid.ColumnDefinitions>
+
+         <ItemsControl ItemsSource="{Binding Inputs}"
+                       Grid.ColumnSpan="3"
+                       Grid.Column="0"
+                       Grid.Row="1"
+                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="DeepPink">
+            <ItemsControl.ItemsPanel>
+               <ItemsPanelTemplate>
+                  <UniformGrid Rows="1" HorizontalAlignment="Stretch"/>
+               </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerTheme>
+                <ControlTheme TargetType="ContentPresenter">
+                    <ControlTheme.Setters>
+                       <Setter Property="Margin" Value="10"></Setter>
+                    </ControlTheme.Setters>
+                </ControlTheme>
+            </ItemsControl.ItemContainerTheme>
+         </ItemsControl>
+
+
+
+
+      <ContentControl Content="{Binding Cancel}"
+                      Grid.Row="2"
+                      Grid.Column="0"
+                      Margin="10"/>
+      
+      <ContentControl Content="{Binding Output}"
+                      Grid.Row="2"
+                      Grid.Column="2"
+                      Margin="10"/>
+   </Grid>
 
 </UserControl>

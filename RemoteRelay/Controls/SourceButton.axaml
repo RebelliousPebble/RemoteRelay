@@ -8,10 +8,14 @@
              x:DataType="local:SourceButtonViewModel">
 
     <Button Content="{Binding SourceName}"
-            Width="100"
-            Height="50"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Command="{Binding SelectSource}" />
+            Command="{Binding SelectSource}"
+            Background="{Binding BackgroundColor}"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            VerticalContentAlignment="Center" Padding="5,25,5,25" 
+            BorderBrush="Black"
+            BorderThickness="5"/>
+
 
 </UserControl>

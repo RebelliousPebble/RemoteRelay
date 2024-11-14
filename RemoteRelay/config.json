@@ -11,9 +11,9 @@
       "RelayPin": 18
     },
     {
-      "SourceName": "Studio 1",
-      "OutputName": "Newsroom 2",
-      "RelayPin": 19
+      "SourceName": "Automation",
+      "OutputName": "Newsroom 1",
+      "RelayPin": 18
     }
   ],
   "DefaultSource": "Studio 1",
@@ -23,7 +23,7 @@
   },
   "ServerName": "localhost",
   "IsServer": true,
-  "Port": 8080,
+  "Port": 24895,
   "FlashOnSelect": true,
   "ShowIpOnScreen": true,
   "Logging": true,
