@@ -1,67 +1,79 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Reactive.Linq;
+using Avalonia.Controls;
+using ReactiveUI;
 using RemoteRelay.Controls;
 
 namespace RemoteRelay.SingleOutput;
 
 public class SingleOutputViewModel : ViewModelBase
 {
+   private readonly IObservable<SourceButtonViewModel?> _selected;
    private readonly AppSettings _settings;
    private readonly TimeSpan _timeout = TimeSpan.FromSeconds(3);
-   private readonly IObservable<SourceButtonViewModel?> _selected;
 
+   private string _currentRoute;
+   private string _selectedSource;
+   private Image _stationLogo;
+   private string _statusMessage;
 
    public SingleOutputViewModel(AppSettings settings)
    {
       _settings = settings;
       Inputs = _settings.Sources.Select(x => new SourceButtonViewModel(x)).ToArray();
 
-
-      //Debug.WriteLine("Lets go for observables");
-
-      //var a = Inputs.Select(x => x.IsSelected.Subscribe(_ => Debug.WriteLine("Item Clicked"))).ToArray();
-
       _selected =
-            Inputs
-                .Select(
-                    x => x.IsSelected.Select(_ => x))
-                .Merge()
-                .Select(x =>
-                    Observable
-                        .Return(x)
-                        .Merge(
-                            Observable
-                                .Return((SourceButtonViewModel)null)
-                                .Delay(_timeout)))
-                .Merge(Cancel.IsSelected.Select(_ => Observable.Return((SourceButtonViewModel)null)))
-                .Switch()
-                .Scan((a, b) => a != b ? b : null);
+         Inputs
+            .Select(
+               x => x.IsSelected.Select(_ => x))
+            .Merge()
+            .Select(x =>
+               Observable
+                  .Return(x)
+                  .Merge(
+                     Observable
+                        .Return((SourceButtonViewModel)null)
+                        .Delay(_timeout)))
+            .Merge(Cancel.IsSelected.Select(_ => Observable.Return((SourceButtonViewModel)null)))
+            .Switch()
+            .Scan((a, b) => a != b ? b : null);
 
-      var a = Output.IsSelected
-          .WithLatestFrom(
-         _selected,
-         (a, b) => (a, b))
-          .Where(x => x.b != null);
+      var connection = Output.IsSelected
+         .WithLatestFrom(
+            _selected,
+            (output, input) => (Output: output, Input: input))
+         .Where(x => x.Input != null);
 
+      var foo = _selected.Where(x => x != null)
 
-    //  Inputs
-    //.Select(
-    //    x => x.IsSelected.Select(_ => x))
-    //.Merge().Subscribe(x => Debug.WriteLine(x.SourceName));
+      //  Inputs
+      //.Select(
+      //    x => x.IsSelected.Select(_ => x))
+      //.Merge().Subscribe(x => Debug.WriteLine(x.SourceName));
 
+      // On selection of an input
       _ = _selected.Subscribe(x =>
       {
          x?.SetSelectedColour();
-         Debug.WriteLine(x?.SourceName);
+         if (x is not null) OnSelect(x);
       });
+      // On selection of an input, disable previous input
       _ = _selected.SkipLast(1).Subscribe(x =>
       {
-         if(x is not null)
+         if (x is not null)
             x.SetInactiveColour();
       });
+
+      // On confirm
+      _ = connection.Subscribe(x =>
+      {
+         SwitcherServer.Instance().SwitchSource(x.Input.SourceName, _settings.Outputs.First());
+      });
+
+      // On TCP status in
+      SwitcherServer.Instance()._stateChanged.Subscribe(x => { });
    }
 
    public IEnumerable<SourceButtonViewModel> Inputs { get; }
@@ -70,4 +82,36 @@ public class SingleOutputViewModel : ViewModelBase
 
    public SourceButtonViewModel Cancel { get; } = new("Cancel");
 
+   public string StatusMessage
+   {
+      get => _statusMessage;
+      set => this.RaiseAndSetIfChanged(ref _statusMessage, value);
+   }
+
+   public Image StationLogo
+   {
+      get => _stationLogo;
+      set => this.RaiseAndSetIfChanged(ref _stationLogo, value);
+   }
+
+   private void OnSelect(SourceButtonViewModel x)
+   {
+      _selectedSource = x.SourceName;
+      StatusMessage = "Click Confirm within 10 seconds to route to " + x?.SourceName;
+   }
+
+   private void OnCancel()
+   {
+      StatusMessage = "Output routed to " + _currentRoute;
+   }
+
+   private void OnTimeoutCounter()
+   {
+      StatusMessage = "Timeout";
+   }
+
+   private void OnStatusUpdate()
+   {
+      StatusMessage = "Status Update";
+   }
 }

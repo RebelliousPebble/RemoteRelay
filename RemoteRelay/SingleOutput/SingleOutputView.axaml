@@ -2,56 +2,66 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:controls="clr-namespace:RemoteRelay.Controls"
              xmlns:singleOutput="clr-namespace:RemoteRelay.SingleOutput"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             Background="MediumPurple"
+             Background="Black"
              x:Class="RemoteRelay.SingleOutput.SingleOutputView"
              x:DataType="singleOutput:SingleOutputViewModel">
 
-   <Grid ShowGridLines="True">
-      <Grid.RowDefinitions>
-         <RowDefinition Height="20*"/>
-         <RowDefinition Height="40*"/>
-         <RowDefinition Height="40*"/>
-      </Grid.RowDefinitions>
-      <Grid.ColumnDefinitions>
-         <ColumnDefinition/>
-         <ColumnDefinition/>
-         <ColumnDefinition/>
-      </Grid.ColumnDefinitions>
+    <Grid ShowGridLines="True">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="20*" />
+            <RowDefinition Height="40*" />
+            <RowDefinition Height="40*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition />
+            <ColumnDefinition />
+            <ColumnDefinition />
+        </Grid.ColumnDefinitions>
 
-         <ItemsControl ItemsSource="{Binding Inputs}"
-                       Grid.ColumnSpan="3"
-                       Grid.Column="0"
-                       Grid.Row="1"
-                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="DeepPink">
+        <Label Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" FontFamily="Arial" FontStretch="Normal" 
+               HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Content="{Binding StatusMessage}"
+               HorizontalContentAlignment="Center"
+               VerticalContentAlignment="Center"
+               Padding="5" />
+
+        <!-- The buttons for source selection -->
+        <ItemsControl ItemsSource="{Binding Inputs}"
+                      Grid.ColumnSpan="3"
+                      Grid.Column="0"
+                      Grid.Row="1"
+                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <ItemsControl.ItemsPanel>
-               <ItemsPanelTemplate>
-                  <UniformGrid Rows="1" HorizontalAlignment="Stretch"/>
-               </ItemsPanelTemplate>
+                <ItemsPanelTemplate>
+                    <UniformGrid Rows="1" HorizontalAlignment="Stretch" />
+                </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemContainerTheme>
                 <ControlTheme TargetType="ContentPresenter">
                     <ControlTheme.Setters>
-                       <Setter Property="Margin" Value="10"></Setter>
+                        <Setter Property="Margin" Value="10" />
                     </ControlTheme.Setters>
                 </ControlTheme>
             </ItemsControl.ItemContainerTheme>
-         </ItemsControl>
+        </ItemsControl>
 
 
+        <!-- The buttons for cancel and confirm -->
+        <ContentControl Content="{Binding Cancel}"
+                        Grid.Row="2"
+                        Grid.Column="0"
+                        Margin="10" />
 
+        <Image Source="{Binding StationLogo}"
+                        Grid.Row="2"
+                        Grid.Column="2"
+                        Margin="10" />
 
-      <ContentControl Content="{Binding Cancel}"
-                      Grid.Row="2"
-                      Grid.Column="0"
-                      Margin="10"/>
-      
-      <ContentControl Content="{Binding Output}"
-                      Grid.Row="2"
-                      Grid.Column="2"
-                      Margin="10"/>
-   </Grid>
+        <ContentControl Content="{Binding Output}"
+                        Grid.Row="2"
+                        Grid.Column="2"
+                        Margin="10" />
+    </Grid>
 
 </UserControl>

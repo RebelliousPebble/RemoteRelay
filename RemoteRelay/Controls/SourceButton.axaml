@@ -7,6 +7,14 @@
              x:Class="RemoteRelay.Controls.SourceButton"
              x:DataType="local:SourceButtonViewModel">
 
+   <UserControl.Resources>
+      <ControlTheme x:Key="{x:Type Button}" TargetType="Button">
+         <Style Selector="^:pointerover">
+            <Setter Property="Background" Value="{Binding BackgroundColor}"/>
+         </Style>
+      </ControlTheme>
+   </UserControl.Resources>
+
     <Button Content="{Binding SourceName}"
             Command="{Binding SelectSource}"
             Background="{Binding BackgroundColor}"
@@ -14,8 +22,9 @@
             VerticalAlignment="Stretch"
             HorizontalContentAlignment="Center"
             VerticalContentAlignment="Center" Padding="5,25,5,25" 
-            BorderBrush="Black"
-            BorderThickness="5"/>
+            BorderBrush="Gray"
+            BorderThickness="5">
+    </Button>
 
 
 </UserControl>

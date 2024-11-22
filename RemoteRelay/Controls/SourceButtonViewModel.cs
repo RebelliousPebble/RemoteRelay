@@ -17,7 +17,8 @@ public class SourceButtonViewModel : ViewModelBase
         SourceName = sourceName;
       SelectSource = ReactiveCommand.Create(() =>
       {
-         Debug.WriteLine("Create did a thing"); _foo.OnNext(Unit.Default); Debug.WriteLine("Create did a thing again"); });
+        _foo.OnNext(Unit.Default); 
+      });
 
       IsSelected.Subscribe(_ => Debug.WriteLine("Proof it did a thing"));
    }
