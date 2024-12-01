@@ -46,12 +46,8 @@ public class SingleOutputViewModel : ViewModelBase
             (output, input) => (Output: output, Input: input))
          .Where(x => x.Input != null);
 
-      var foo = _selected.Where(x => x != null)
+      var foo = _selected.Where(x => x != null);
 
-      //  Inputs
-      //.Select(
-      //    x => x.IsSelected.Select(_ => x))
-      //.Merge().Subscribe(x => Debug.WriteLine(x.SourceName));
 
       // On selection of an input
       _ = _selected.Subscribe(x =>
@@ -59,12 +55,15 @@ public class SingleOutputViewModel : ViewModelBase
          x?.SetSelectedColour();
          if (x is not null) OnSelect(x);
       });
+
+
       // On selection of an input, disable previous input
       _ = _selected.SkipLast(1).Subscribe(x =>
       {
          if (x is not null)
             x.SetInactiveColour();
       });
+
 
       // On confirm
       _ = connection.Subscribe(x =>
@@ -73,7 +72,10 @@ public class SingleOutputViewModel : ViewModelBase
       });
 
       // On TCP status in
-      SwitcherServer.Instance()._stateChanged.Subscribe(x => { });
+      SwitcherServer.Instance()._stateChanged.Subscribe(x =>
+      {
+         x.
+      });
    }
 
    public IEnumerable<SourceButtonViewModel> Inputs { get; }

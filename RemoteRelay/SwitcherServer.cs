@@ -15,9 +15,11 @@ public class SwitcherServer
 
    private readonly AppSettings _config;
    private readonly Socket _socket;
+   private readonly Socket _sendSocket; //server only
    private readonly SwitcherState? _switcher;
    private readonly Socket _tcpSocket;
-   private EndPoint _remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+   private EndPoint _sendEndPoint;
+   private EndPoint _receiveEndPoint;
    public Subject<Dictionary<string, string>> _stateChanged = new();
 
    /// <summary>
@@ -28,9 +30,20 @@ public class SwitcherServer
    public SwitcherServer(int port, AppSettings config)
    {
       _switcher = config.IsServer ? new SwitcherState(config) : null;
+
       _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
       _socket.Bind(new IPEndPoint(IPAddress.Any, port));
+
+      _sendSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+      _sendSocket.Bind(new IPEndPoint(IPAddress.Any, port+1));
+
       _config = config;
+
+      _sendEndPoint = new IPEndPoint(IPAddress.Broadcast, port);
+      _receiveEndPoint = new IPEndPoint(IPAddress.Any, port);
+
+      _sendSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
+
 
       // if TcpMirrorAddress is set, connect to the remote server
       if (string.IsNullOrEmpty(config.TcpMirrorAddress) || config.TcpMirrorPort is null) return;
@@ -81,9 +94,10 @@ public class SwitcherServer
    private void BeginReceive()
    {
       var buffer = new byte[StateObject.BufferSize];
-      _socket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref _remoteEndPoint, ReceiveCallback,
-         buffer);
+      EndPoint receiveEP = new IPEndPoint(IPAddress.Any, 0);
+      _socket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref receiveEP, ReceiveCallback, buffer);
    }
+
 
    /// <summary>
    ///    Request a status update from a server on the network.
@@ -91,7 +105,7 @@ public class SwitcherServer
    public void RequestStatus()
    {
       var byteData = Encoding.ASCII.GetBytes("RELAYREMOTE GETSTATE");
-      _socket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None, _remoteEndPoint, SendCallback, null);
+      _sendSocket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None, _sendEndPoint, SendCallback, null);
    }
 
    /// <summary>
@@ -102,7 +116,7 @@ public class SwitcherServer
    public void SwitchSource(string source, string output)
    {
       var byteData = Encoding.ASCII.GetBytes($"RELAYREMOTE SWITCH-{source}-{output}");
-      _socket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None, _remoteEndPoint, SendCallback, null);
+      _sendSocket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None, _sendEndPoint, SendCallback, null);
    }
 
    /// <summary>
@@ -112,7 +126,8 @@ public class SwitcherServer
    private void ReceiveCallback(IAsyncResult ar)
    {
       var buffer = (byte[])ar.AsyncState;
-      var bytesRead = _socket.EndReceiveFrom(ar, ref _remoteEndPoint);
+      EndPoint senderEP = new IPEndPoint(IPAddress.Any, 0);
+      var bytesRead = _socket.EndReceiveFrom(ar, ref senderEP);
 
       if (bytesRead > 0)
       {
@@ -176,7 +191,7 @@ public class SwitcherServer
       // remove last %
       response = response.Substring(0, response.Length - 1);
       var byteData = Encoding.ASCII.GetBytes(response);
-      _socket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None, _remoteEndPoint, SendCallback, null);
+      _sendSocket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None, _sendEndPoint, SendCallback, null);
    }
 
    /// <summary>
@@ -204,7 +219,7 @@ public class SwitcherServer
    /// <param name="ar"></param>
    private void SendCallback(IAsyncResult ar)
    {
-      _socket.EndSendTo(ar);
+      _sendSocket.EndSendTo(ar);
    }
 }
 
