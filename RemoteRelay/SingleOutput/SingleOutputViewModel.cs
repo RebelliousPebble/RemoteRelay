@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
+using System.Diagnostics;
 using System.Linq;
 using System.Reactive.Linq;
 using Avalonia.Controls;
@@ -72,10 +74,7 @@ public class SingleOutputViewModel : ViewModelBase
       });
 
       // On TCP status in
-      SwitcherServer.Instance()._stateChanged.Subscribe(x =>
-      {
-         x.
-      });
+      SwitcherServer.Instance()._stateChanged.Subscribe(OnStatusUpdate);
    }
 
    public IEnumerable<SourceButtonViewModel> Inputs { get; }
@@ -112,8 +111,25 @@ public class SingleOutputViewModel : ViewModelBase
       StatusMessage = "Timeout";
    }
 
-   private void OnStatusUpdate()
+   private void OnStatusUpdate(Dictionary<string, string> newStatus)
    {
-      StatusMessage = "Status Update";
+      StatusMessage = "Updating";
+      // Update screen to show thw new system status
+      if (newStatus != null)
+      {
+         foreach (var key in newStatus)
+         {
+            if (key.Value != "")
+            {
+               Inputs.First(x => x.SourceName == key.Key).SetActiveColour();
+               StatusMessage = $"{key.Key} routed to {key.Value}";
+            }
+            // Set all others to inactive
+            else
+            {
+               Inputs.First(x => x.SourceName == key.Key).SetInactiveColour();
+            }
+         }
+      }
    }
 }

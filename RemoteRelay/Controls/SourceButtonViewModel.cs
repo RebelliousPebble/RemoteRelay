@@ -53,6 +53,6 @@ public class SourceButtonViewModel : ViewModelBase
 
     public void SetActiveColour()
     {
-        BackgroundColor = new SolidColorBrush(Colors.Red);
+        Dispatcher.UIThread.Invoke(() =>BackgroundColor = new SolidColorBrush(Colors.Red));
     }
 }

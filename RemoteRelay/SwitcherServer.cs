@@ -171,10 +171,9 @@ public class SwitcherServer
 
          if (data.StartsWith("RELAYREMOTE GETSTATE")) SendStatusPacket();
       }
-      else
-      {
-         if (data.StartsWith("RELAYREMOTE STATE")) ProcessStatusPacket(data);
-      }
+
+      if (data.StartsWith("RELAYREMOTE STATE")) ProcessStatusPacket(data);
+      
    }
 
    /// <summary>
