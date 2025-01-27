@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Reactive.Subjects;
@@ -14,11 +15,11 @@ public class SwitcherServer
    private static readonly Mutex _lock = new();
 
    private readonly AppSettings _config;
-   private readonly Socket _socket;
+   private readonly EndPoint _sendEndPoint;
    private readonly Socket _sendSocket; //server only
+   private readonly Socket _socket;
    private readonly SwitcherState? _switcher;
    private readonly Socket _tcpSocket;
-   private EndPoint _sendEndPoint;
    private EndPoint _receiveEndPoint;
    public Subject<Dictionary<string, string>> _stateChanged = new();
 
@@ -29,13 +30,17 @@ public class SwitcherServer
    /// <param name="config">The configuration object</param>
    public SwitcherServer(int port, AppSettings config)
    {
+      if (_config.IsServer) _config.ServerName = "localhost";
       _switcher = config.IsServer ? new SwitcherState(config) : null;
+
+      Debug.WriteLine($"Incoming Port {port}");
+      Debug.WriteLine($"Outgoing Port {port + 1}");
 
       _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
       _socket.Bind(new IPEndPoint(IPAddress.Any, port));
 
       _sendSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-      _sendSocket.Bind(new IPEndPoint(IPAddress.Any, port+1));
+      _sendSocket.Bind(new IPEndPoint(IPAddress.Any, port + 1));
 
       _config = config;
 
@@ -148,7 +153,7 @@ public class SwitcherServer
    /// <param name="data">A string containing the source data</param>
    private void ProcessData(string data)
    {
-      Console.WriteLine($"Processing data: {data}");
+      Debug.WriteLine($"Processing data: {data}");
 
       // We are configured to be a server, so we want to process switching and getstate commands
       if (_config.IsServer)
@@ -173,7 +178,6 @@ public class SwitcherServer
       }
 
       if (data.StartsWith("RELAYREMOTE STATE")) ProcessStatusPacket(data);
-      
    }
 
    /// <summary>

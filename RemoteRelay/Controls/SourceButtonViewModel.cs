@@ -1,7 +1,8 @@
 using System;
-using System.Diagnostics;
 using System.Reactive;
+using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using System.Threading;
 using Avalonia.Media;
 using Avalonia.Threading;
 using ReactiveUI;
@@ -10,49 +11,53 @@ namespace RemoteRelay.Controls;
 
 public class SourceButtonViewModel : ViewModelBase
 {
-    private SolidColorBrush _backgroundColor = new(Colors.DarkGray);
+   private readonly BehaviorSubject<SourceState> _state = new(SourceState.Inactive);
+   private SolidColorBrush _backgroundColor = new(Colors.DarkGray);
 
-    public SourceButtonViewModel(string sourceName)
-    {
-        SourceName = sourceName;
-      SelectSource = ReactiveCommand.Create(() =>
-      {
-        _foo.OnNext(Unit.Default); 
-      });
+   public SourceButtonViewModel(string sourceName)
+   {
+      SourceName = sourceName;
 
-      IsSelected.Subscribe(_ => Debug.WriteLine("Proof it did a thing"));
+      SelectSource =
+         ReactiveCommand
+            .CreateFromObservable(
+               () => Observable.Return(Unit.Default),
+               _state.Select(x => x != SourceState.Active));
+
+      _ = _state
+         .Select(state => state switch
+         {
+            SourceState.Inactive => Colors.Gray,
+            SourceState.Selected => Colors.DeepSkyBlue,
+            SourceState.Active => Colors.Red,
+            _ => Colors.Pink
+         })
+         .ObserveOn(SynchronizationContext.Current!)
+         .Subscribe(x => BackgroundColor = new SolidColorBrush(x));
+      ;
    }
 
-    public string SourceName { get; }
-    
-    public ReactiveCommand<Unit, Unit> SelectSource { get; }
+   public string SourceName { get; }
 
-    public IObservable<Unit> IsSelected => _foo;
+   public ReactiveCommand<Unit, Unit> SelectSource { get; }
 
-   private readonly Subject<Unit> _foo = new();
+   public IObservable<Unit> Clicked => SelectSource;
 
-
-    public SolidColorBrush BackgroundColor
-    {
-        get => _backgroundColor;
-        set => this.RaiseAndSetIfChanged(ref _backgroundColor, value);
-    }
-
-    public void SetInactiveColour()
-    {
-       Debug.WriteLine("SettingInactive");
-      Dispatcher.UIThread.Invoke(() => BackgroundColor = new SolidColorBrush(Colors.Gray));
-
-    }
-
-    public void SetSelectedColour()
-    {
-       Debug.WriteLine("SettingSelected");
-       Dispatcher.UIThread.Invoke(() => BackgroundColor = new SolidColorBrush(Colors.DeepSkyBlue));
+   public SolidColorBrush BackgroundColor
+   {
+      get => _backgroundColor;
+      set => this.RaiseAndSetIfChanged(ref _backgroundColor, value);
    }
+   
+   public void SetState(SourceState state)
+   {
+      Dispatcher.UIThread.Invoke(() => _state.OnNext(state));
+   }
+}
 
-    public void SetActiveColour()
-    {
-        Dispatcher.UIThread.Invoke(() =>BackgroundColor = new SolidColorBrush(Colors.Red));
-    }
+public enum SourceState
+{
+   Inactive,
+   Selected,
+   Active
 }

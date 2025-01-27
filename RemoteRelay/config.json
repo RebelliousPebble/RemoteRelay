@@ -13,7 +13,7 @@
     {
       "SourceName": "Automation",
       "OutputName": "Newsroom 1",
-      "RelayPin": 18
+      "RelayPin": 19
     }
   ],
   "DefaultSource": "Studio 1",
@@ -23,9 +23,9 @@
   },
   "ServerName": "localhost",
   "IsServer": true,
-  "Port": 24895,
+  "Port": 58126,
   "FlashOnSelect": true,
   "ShowIpOnScreen": true,
   "Logging": true,
-  "LogoFile": "path/to/logo.png"
+  "LogoFile": "C:\\Users\\glenn\\Pictures\\gratis-saus-hq.bmp"
 }
