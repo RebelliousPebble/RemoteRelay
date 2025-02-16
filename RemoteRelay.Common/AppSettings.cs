@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace RemoteRelay;
+namespace RemoteRelay.Common;
 
 [Serializable]
 public struct AppSettings
@@ -17,8 +17,6 @@ public struct AppSettings
 
     //Communication
     public string ServerName { get; set; }
-    public bool IsServer { get; set; }
-    public int Port { get; set; }
     public string? TcpMirrorAddress { get; set; }
     public int? TcpMirrorPort { get; set; }
 

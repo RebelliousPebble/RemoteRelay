@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Device.Gpio;
 using System.Device.Gpio.Drivers;
 using System.Linq;
+using RemoteRelay.Common;
 
-namespace RemoteRelay;
+namespace RemoteRelay.Server;
 
 public class SwitcherState
 {

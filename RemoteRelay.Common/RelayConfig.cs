@@ -1,6 +1,6 @@
 using System;
 
-namespace RemoteRelay;
+namespace RemoteRelay.Common;
 
 [Serializable]
 public class RelayConfig

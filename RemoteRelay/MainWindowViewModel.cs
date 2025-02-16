@@ -5,6 +5,7 @@ using System.Net;
 using System.Text.Json;
 using RemoteRelay.MultiOutput;
 using RemoteRelay.SingleOutput;
+using RemoteRelay.Common;
 
 namespace RemoteRelay;
 
@@ -20,7 +21,6 @@ public class MainWindowViewModel : ViewModelBase
         _settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText("config.json"));
         _settings.ServerName = Dns.GetHostName();
         
-        SwitcherServer.Instance(_settings.Port, _settings).Start();
         
         OperationViewModel = _settings.Outputs.Count == 1
             ? new MultiOutputViewModel()

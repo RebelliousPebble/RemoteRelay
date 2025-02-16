@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Device.Gpio;
 using System.Threading;
 
-namespace RemoteRelay;
+namespace RemoteRelay.Server;
 
 public class MockGpioDriver : GpioDriver
 {

@@ -8,6 +8,7 @@ using System.Reactive.Linq;
 using Avalonia.Media.Imaging;
 using ReactiveUI;
 using RemoteRelay.Controls;
+using RemoteRelay.Common;
 
 namespace RemoteRelay.SingleOutput;
 

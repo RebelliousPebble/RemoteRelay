@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Device.Gpio;
 using System.Linq;
 
-namespace RemoteRelay;
+namespace RemoteRelay.Server;
 
 public class Source
 {
