@@ -22,6 +22,7 @@
     "Studio 2": 22
   },
   "ServerName": "localhost",
+  "ServerPort": 33101,
   "FlashOnSelect": true,
   "ShowIpOnScreen": true,
   "Logging": true,

@@ -12,10 +12,10 @@ namespace RemoteRelay.Server
       {
          _switcherState = switcherState;
       }
+
       public async Task SwitchSource(string sourceName, string outputName)
       {
-         var source = _sources.FirstOrDefault(x => x._sourceName == sourceName);
-         if (source != null)
+         if (sourceName != null)
          {
             _switcherState.SwitchSource(sourceName, outputName);
             //Sends the SystemState nessage to all clients

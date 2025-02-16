@@ -20,8 +20,9 @@ public class MainWindowViewModel : ViewModelBase
         //Load settings from config.json
         _settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText("config.json"));
         _settings.ServerName = Dns.GetHostName();
-        
-        
+
+      SwitcherClient.InitializeInstance(_settings);
+
         OperationViewModel = _settings.Outputs.Count == 1
             ? new MultiOutputViewModel()
             : new SingleOutputViewModel(_settings);

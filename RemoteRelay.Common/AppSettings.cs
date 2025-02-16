@@ -17,7 +17,8 @@ public struct AppSettings
 
     //Communication
     public string ServerName { get; set; }
-    public string? TcpMirrorAddress { get; set; }
+   public int ServerPort { get; set; }
+   public string? TcpMirrorAddress { get; set; }
     public int? TcpMirrorPort { get; set; }
 
     //Options

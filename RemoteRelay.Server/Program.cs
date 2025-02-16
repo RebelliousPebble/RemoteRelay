@@ -14,8 +14,13 @@ namespace RemoteRelay.Server
          var builder = WebApplication.CreateBuilder(args);
          builder.Services.AddSignalR();
          builder.Services.AddSingleton<SwitcherState>(_ => new SwitcherState(_settings));
+         builder.WebHost.ConfigureKestrel(options =>
+         {
+            options.ListenAnyIP(33101);
+         });
 
          var app = builder.Build();
+        
 
          app.MapGet("/", () => "This is a SignalR Server for Remote Relay, the hub is hosted at /relay");
          app.MapHub<RelayHub>("/relay");

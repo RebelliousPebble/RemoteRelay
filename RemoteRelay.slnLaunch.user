@@ -1,0 +1,17 @@
+[
+  {
+    "Name": "New Profile",
+    "Projects": [
+      {
+        "Path": "RemoteRelay\\RemoteRelay.csproj",
+        "Action": "Start",
+        "DebugTarget": "RemoteRelay"
+      },
+      {
+        "Path": "RemoteRelay.Server\\RemoteRelay.Server.csproj",
+        "Action": "StartWithoutDebugging",
+        "DebugTarget": "http"
+      }
+    ]
+  }
+]

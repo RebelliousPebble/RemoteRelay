@@ -82,6 +82,8 @@ public class SingleOutputViewModel : ViewModelBase
 
       _ = _selected.Where(x => x == null).Distinct().Subscribe(_ => { OnCancel(); });
 
+      Cancel.Clicked.Subscribe(_ => OnCancel());
+
       // On TCP status in
       Server._stateChanged.Subscribe(x =>
       {
@@ -106,7 +108,7 @@ public class SingleOutputViewModel : ViewModelBase
       }
    }
 
-   protected SwitcherServer Server => SwitcherServer.Instance();
+   protected SwitcherClient Server => SwitcherClient.Instance;
 
    public Bitmap StationLogo
    {
@@ -134,7 +136,7 @@ public class SingleOutputViewModel : ViewModelBase
       if (newStatus != null)
       {
          foreach (var key in newStatus)
-            if (key.Value != "")
+            if (key.Value is not null or "")
             {
                Debug.WriteLine($"{key.Key} is active");
                Inputs.First(x => x.SourceName == key.Key).SetState(SourceState.Active);
