@@ -28,24 +28,22 @@ jobs:
       run: dotnet publish /p:PublishProfile=FolderProfile
     - name: Publish 2
       run: dotnet publish /p:PublishProfile=FolderProfile1
-    - name: Zip RemoteRelay-Client-Win64 artifacts
-      run: zip -r RemoteRelay-Client-Win64.zip ./RemoteRelay/bin/Release/net9.0/publish/win-x64
-    - name: Zip RemoteRelay-Client-LinuxArm64 artifacts
-      run: zip -r RemoteRelay-Client-LinuxArm64.zip ./RemoteRelay/bin/Release/net9.0/publish/linux-arm64
-    - name: Zip RemoteRelay-Server-LinuxArm64 artifacts
-      run: zip -r RemoteRelay-Server-LinuxArm64.zip ./RemoteRelay.Server/bin/Release/net9.0/publish
+
+    # Remove zip steps and reference the folders directly
     - name: Upload RemoteRelay-Client-Win64 artifact
       uses: actions/upload-artifact@v4
       with:
         name: RemoteRelay-Client-Win64-artifacts
-        path: RemoteRelay-Client-Win64.zip
+        path: ./RemoteRelay/bin/Release/net9.0/publish/win-x64
+
     - name: Upload RemoteRelay-Client-LinuxArm64 artifact
       uses: actions/upload-artifact@v4
       with:
         name: RemoteRelay-Client-LinuxArm64-artifacts
-        path: RemoteRelay-Client-LinuxArm64.zip
+        path: ./RemoteRelay/bin/Release/net9.0/publish/linux-arm64
+
     - name: Upload RemoteRelay-Server-LinuxArm64 artifact
       uses: actions/upload-artifact@v4
       with:
         name: RemoteRelay-Server-LinuxArm64-artifacts
-        path: RemoteRelay-Server-LinuxArm64.zip
+        path: ./RemoteRelay.Server/bin/Release/net9.0/publish
