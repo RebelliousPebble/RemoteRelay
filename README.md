@@ -37,3 +37,6 @@ The client UI is designed for a pi connected to a touch screen, with the idea th
 - Add support for sending a TCP message to a different service on switch (this could be for triggering a Hot Spare switch in Zetta, a Smart Transfer in Myriad, or for updating digital studio signage)
 - Add support for multiple outputs (Allowing Studio 1 to be routed to Output 1, Studio 2 to Output 2 etc from the same screen)
 - Add support for multiple servers (Because one relay HAT isn't enough!)
+- Add a pin lock so the system can only be used by those who know a code (ie presenters only)
+- Create an automatic install script
+- Create releases with GitHub Actions
