@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using Avalonia.Media.Imaging;
 using ReactiveUI;
 using RemoteRelay.Controls;
@@ -13,73 +14,95 @@ namespace RemoteRelay.SingleOutput;
 
 public class SingleOutputViewModel : ViewModelBase
 {
-   private readonly IObservable<SourceButtonViewModel?> _selected;
-   private readonly AppSettings _settings;
-   private readonly TimeSpan _timeout = TimeSpan.FromSeconds(10);
+   private readonly Subject<Unit> _cancel = new();
+   private readonly Subject<IObservable<string>> _message = new();
 
-   private string _currentRoute;
-   private Dictionary<string, string> _currentStatus;
-   private string _lastStatusMessage;
-   private string _selectedSource;
+   private readonly int _timeout = 3;
+
+   private Dictionary<string, string> _currentStatus = new();
    private Bitmap _stationLogo;
    private string _statusMessage;
 
+
    public SingleOutputViewModel(AppSettings settings)
    {
-      _settings = settings;
-      Inputs = _settings.Sources.Select(x => new SourceButtonViewModel(x)).ToArray();
+      Inputs = settings.Sources.Select(x => new SourceButtonViewModel(x)).ToArray();
 
-      _selected =
-         Inputs
-            .Select(x => x.Clicked.Select(_ => x))
-            .Merge()
-            .Select(x => Observable
-               .Return(x)
-               .Merge(
-                  Observable
-                     .Return((SourceButtonViewModel?)null)
-                     .Delay(_timeout)))
-            .Merge(Cancel.Clicked.Select(_ => Observable.Return((SourceButtonViewModel?)null)))
+      var cancelRequested =
+         Observable.Merge(_cancel,
+            Cancel.Clicked,
+            Server._stateChanged.Select(_ => Unit.Default));
+
+      IObservable<SourceButtonViewModel?> selected = Inputs
+         .Select(x => x.Clicked.Select(_ => x))
+         .Merge()
+         .Select(x => Observable
+            .Return(x)
             .Merge(
-               Server._stateChanged.Select(_ => Observable.Return((SourceButtonViewModel?)null)))
-            .Switch()
-            .Scan((a, b) => a != b ? b : null);
+               Observable
+                  .Return((SourceButtonViewModel?)null)
+                  .Delay(TimeSpan.FromSeconds(_timeout))))
+         .Merge(cancelRequested.Select(_ => Observable.Return((SourceButtonViewModel?)null)))
+         .Switch()
+         .Scan((a, b) => a != b ? b : null);
 
       var connection = Output.Clicked
          .WithLatestFrom(
-            _selected,
+            selected,
             (output, input) => (Output: output, Input: input))
          .Where(x => x.Input != null);
 
-      if (Path.Exists(_settings.LogoFile))
+      if (Path.Exists(settings.LogoFile))
       {
-         if (Path.IsPathFullyQualified(_settings.LogoFile))
-            StationLogo = new Bitmap(_settings.LogoFile);
+         if (Path.IsPathFullyQualified(settings.LogoFile))
+            StationLogo = new Bitmap(settings.LogoFile);
          else
-            StationLogo = new Bitmap(Path.Combine(Directory.GetCurrentDirectory(), _settings.LogoFile));
+            StationLogo = new Bitmap(Path.Combine(Directory.GetCurrentDirectory(), settings.LogoFile));
       }
 
 
       // On selection of an input
-      _ = _selected.Subscribe(x =>
+      _ = selected.Subscribe(x =>
       {
          x?.SetState(SourceState.Selected);
-         if (x is not null) OnSelect(x);
+         if (x is null) return;
+
+         _message.OnNext(
+            Observable
+               .Range(0, _timeout)
+               .Select(x => _timeout - x)
+               .Zip(
+                  Observable
+                     .Return(Unit.Default)
+                     .Delay(TimeSpan.FromSeconds(1))
+                     .Repeat(_timeout - 1)
+                     .StartWith(Unit.Default),
+                  (i, _) => $"Press confirm in the next {i} seconds to switch"));
       });
 
 
       // On selection of an input, disable previous input
-      _ = _selected.SkipLast(1).Subscribe(x =>
-      {
-         if (x is not null)
-            x.SetState(SourceState.Inactive);
-      });
+      _ = selected.SkipLast(1).Subscribe(x => { x?.SetState(SourceState.Inactive); });
 
 
       // On confirm
-      _ = connection.Subscribe(x => { Server.SwitchSource(x.Input.SourceName, _settings.Outputs.First()); });
+      _ = connection.Subscribe(x =>
+      {
+         _cancel.OnNext(Unit.Default);
+         Server.SwitchSource(x.Input.SourceName, settings.Outputs.First());
+         _message.OnNext(
+            Observable
+               .Return("No response received from server")
+               .Delay(TimeSpan.FromSeconds(_timeout))
+               .StartWith("Waiting for response from server"));
+      });
 
-      _ = _selected.Where(x => x == null).Distinct().Subscribe(_ => { OnCancel(); });
+      _ = selected
+         .DistinctUntilChanged()
+         .Where(x => x == null)
+         .Subscribe(_ => { OnCancel(); });
+
+      _ = _message.Switch().Subscribe(x => { StatusMessage = x; });
 
       // On TCP status in
       Server._stateChanged.Subscribe(x =>
@@ -98,11 +121,7 @@ public class SingleOutputViewModel : ViewModelBase
    public string StatusMessage
    {
       get => _statusMessage;
-      set
-      {
-         _lastStatusMessage = _statusMessage;
-         this.RaiseAndSetIfChanged(ref _statusMessage, value);
-      }
+      set => this.RaiseAndSetIfChanged(ref _statusMessage, value);
    }
 
    protected SwitcherServer Server => SwitcherServer.Instance();
@@ -111,12 +130,6 @@ public class SingleOutputViewModel : ViewModelBase
    {
       get => _stationLogo;
       set => this.RaiseAndSetIfChanged(ref _stationLogo, value);
-   }
-
-   private void OnSelect(SourceButtonViewModel x)
-   {
-      _selectedSource = x.SourceName;
-      StatusMessage = "Click Confirm within 10 seconds to route to " + x?.SourceName;
    }
 
    private void OnCancel()
@@ -128,16 +141,16 @@ public class SingleOutputViewModel : ViewModelBase
    {
       Debug.WriteLine("Beginning key setting");
 
-      StatusMessage = "Updating";
+      _message.OnNext(Observable.Return("Updating..."));
       // Update screen to show the new system status
-      if (newStatus != null)
+      if (newStatus.Count != 0)
       {
          foreach (var key in newStatus)
             if (key.Value != "")
             {
                Debug.WriteLine($"{key.Key} is active");
                Inputs.First(x => x.SourceName == key.Key).SetState(SourceState.Active);
-               StatusMessage = $"{key.Key} routed to {key.Value}";
+               _message.OnNext(Observable.Return($"{key.Key} routed to {key.Value}"));
             }
             // Set all others to inactive
             else
@@ -147,6 +160,10 @@ public class SingleOutputViewModel : ViewModelBase
             }
 
          _currentStatus = newStatus;
+      }
+      else
+      {
+         _message.OnNext(Observable.Return(""));
       }
 
       Debug.WriteLine("Ending key setting");

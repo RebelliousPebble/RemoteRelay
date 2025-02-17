@@ -32,20 +32,33 @@ public class SwitcherServer
    {
       if (_config.IsServer) _config.ServerName = "localhost";
       _switcher = config.IsServer ? new SwitcherState(config) : null;
+      int incoming_port;
+      int outgoing_port;
 
-      Debug.WriteLine($"Incoming Port {port}");
-      Debug.WriteLine($"Outgoing Port {port + 1}");
+      if (config.IsServer)
+      {
+         incoming_port = port + 1;
+         outgoing_port = port;
+      }
+      else
+      {
+         incoming_port = port;
+         outgoing_port = port + 1;
+      }
+
+      Debug.WriteLine($"Incoming Port {incoming_port}");
+      Debug.WriteLine($"Outgoing Port {outgoing_port}");
 
       _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-      _socket.Bind(new IPEndPoint(IPAddress.Any, port));
+      _socket.Bind(new IPEndPoint(IPAddress.Any, incoming_port));
 
       _sendSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-      _sendSocket.Bind(new IPEndPoint(IPAddress.Any, port + 1));
+      _sendSocket.Bind(new IPEndPoint(IPAddress.Any, outgoing_port));
 
       _config = config;
 
-      _sendEndPoint = new IPEndPoint(IPAddress.Broadcast, port);
-      _receiveEndPoint = new IPEndPoint(IPAddress.Any, port);
+      _sendEndPoint = new IPEndPoint(IPAddress.Broadcast, outgoing_port);
+      _receiveEndPoint = new IPEndPoint(IPAddress.Any, incoming_port);
 
       _sendSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
 
