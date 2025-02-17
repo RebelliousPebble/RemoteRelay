@@ -25,7 +25,9 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration Release
     - name: Publish
-      run: dotnet publish /p:PublishProfile=FolderProfile /p:PublishProfile=FolderProfile1
+      run: dotnet publish /p:PublishProfile=FolderProfile
+    - name: Publish 2
+      run: dotnet publish /p:PublishProfile=FolderProfile1
     - name: Zip RemoteRelay-Client-Win64 artifacts
       run: zip -r RemoteRelay-Client-Win64.zip ./RemoteRelay/bin/Release/net9.0/publish/win-x64
     - name: Zip RemoteRelay-Client-LinuxArm64 artifacts
