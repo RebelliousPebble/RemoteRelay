@@ -23,6 +23,27 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
-      run: dotnet build --no-restore
+      run: dotnet build --no-restore --configuration Release
     - name: Publish
-      run: dotnet publish /p:PublishProfile=FolderProfile
+      run: dotnet publish /p:PublishProfile=FolderProfile /p:PublishProfile=FolderProfile1
+    - name: Zip RemoteRelay-Client-Win64 artifacts
+      run: zip -r RemoteRelay-Client-Win64.zip ./RemoteRelay/bin/Release/net9.0/publish/win-x64
+    - name: Zip RemoteRelay-Client-LinuxArm64 artifacts
+      run: zip -r RemoteRelay-Client-LinuxArm64.zip ./RemoteRelay/bin/Release/net9.0/publish/linux-arm64
+    - name: Zip RemoteRelay-Server-LinuxArm64 artifacts
+      run: zip -r RemoteRelay-Server-LinuxArm64.zip ./RemoteRelay.Server/bin/Release/net9.0/publish
+    - name: Upload RemoteRelay-Client-Win64 artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: RemoteRelay-Client-Win64-artifacts
+        path: RemoteRelay-Client-Win64.zip
+    - name: Upload RemoteRelay-Client-LinuxArm64 artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: RemoteRelay-Client-LinuxArm64-artifacts
+        path: RemoteRelay-Client-LinuxArm64.zip
+    - name: Upload RemoteRelay-Server-LinuxArm64 artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: RemoteRelay-Server-LinuxArm64-artifacts
+        path: RemoteRelay-Server-LinuxArm64.zip
