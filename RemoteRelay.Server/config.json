@@ -3,27 +3,27 @@
     {
       "SourceName": "Studio 1",
       "OutputName": "Newsroom 1",
-      "RelayPin": 17
+      "RelayPin": 26
     },
     {
       "SourceName": "Studio 2",
       "OutputName": "Newsroom 1",
-      "RelayPin": 18
+      "RelayPin": 20
     },
     {
       "SourceName": "Automation",
       "OutputName": "Newsroom 1",
-      "RelayPin": 19
+      "RelayPin": 21
     }
   ],
   "DefaultSource": "Studio 1",
   "PhysicalSourceButtons": {
-    "Studio 1": 27,
-    "Studio 2": 22
+    "Studio 1": 10,
+    "Studio 2": 9
   },
-  "ServerName": "localhost",
+  "ServerPort": 33101,
   "FlashOnSelect": true,
   "ShowIpOnScreen": true,
   "Logging": true,
-  "LogoFile": "C:\\Users\\glenn\\Pictures\\gratis-saus-hq.bmp"
+  "LogoFile": ""
 }

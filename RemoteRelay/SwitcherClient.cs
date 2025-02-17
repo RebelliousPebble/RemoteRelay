@@ -1,74 +1,75 @@
-﻿using Microsoft.AspNetCore.SignalR.Client;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reactive.Subjects;
-using System.Text;
-using System.Threading.Tasks;
-using Avalonia.Controls;
+using Microsoft.AspNetCore.SignalR.Client;
 using RemoteRelay.Common;
 
-namespace RemoteRelay
+namespace RemoteRelay;
+
+public class SwitcherClient
 {
-   public class SwitcherClient
+   private static SwitcherClient _instance;
+   private static readonly object _lock = new();
+   private readonly HubConnection _connection;
+   private AppSettings? _settings;
+
+   public Subject<Dictionary<string, string>> _stateChanged = new();
+
+   private SwitcherClient(Uri hubUri)
    {
-      private static SwitcherClient _instance;
-      private static readonly object _lock = new object();
-      private HubConnection _connection;
-      private AppSettings _settings;
+      _connection = new HubConnectionBuilder()
+         .WithAutomaticReconnect()
+         .WithKeepAliveInterval(TimeSpan.FromSeconds(10))
+         .WithUrl(hubUri)
+         .Build();
 
-      public Subject<Dictionary<string, string>> _stateChanged = new();
+      _connection.On<Dictionary<string, string>>("SystemState", state => { _stateChanged.OnNext(state); });
 
-      private SwitcherClient(AppSettings settings)
+      _connection.On<AppSettings>("Configuration", settings => _settings = settings);
+
+      _connection.StartAsync();
+   }
+
+   public static SwitcherClient Instance
+   {
+      get
       {
-         _settings = settings;
-         var hubURI = new Uri($"http://{settings.ServerName}:{settings.ServerPort}/relay");
-
-         _connection = new HubConnectionBuilder()
-             .WithAutomaticReconnect()
-             .WithKeepAliveInterval(TimeSpan.FromSeconds(10))
-             .WithUrl(hubURI)
-             .Build();
-
-         _connection.On<Dictionary<string, string>>("SystemState", (state) =>
-         {
-            _stateChanged.OnNext(state);
-         });
-
-         _connection.StartAsync();
+         if (_instance == null)
+            throw new InvalidOperationException("Instance not initialized. Call InitializeInstance first.");
+         return _instance;
       }
+   }
 
-      public static SwitcherClient Instance
+   public AppSettings Settings
+   {
+      get
       {
-         get
-         {
-            if (_instance == null)
-            {
-               throw new InvalidOperationException("Instance not initialized. Call InitializeInstance first.");
-            }
-            return _instance;
-         }
+         if (_settings == null)
+            throw new InvalidOperationException("Settings not gathered from server. Call RequestSettings first.");
+         return _settings.Value;
       }
+   }
 
-      public static void InitializeInstance(AppSettings settings)
+   public static void InitializeInstance(Uri hubUri)
+   {
+      lock (_lock)
       {
-         lock (_lock)
-         {
-            if (_instance == null)
-            {
-               _instance = new SwitcherClient(settings);
-            }
-         }
+         if (_instance == null) _instance = new SwitcherClient(hubUri);
       }
+   }
 
-      public void SwitchSource(string source, string output)
-      {
-         _connection.SendAsync("SwitchSource", source, output);
-      }
+   public void SwitchSource(string source, string output)
+   {
+      _connection.SendAsync("SwitchSource", source, output);
+   }
 
-      public void RequestStatus()
-      {
-         _connection.SendAsync("GetSystemState");
-      }
+   public void RequestStatus()
+   {
+      _connection.SendAsync("GetSystemState");
+   }
+
+   public void RequestSettings()
+   {
+      _connection.SendAsync("GetConfiguration");
    }
 }

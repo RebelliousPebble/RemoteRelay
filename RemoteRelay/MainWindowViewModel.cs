@@ -1,34 +1,36 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Text.Json;
+using System.Threading;
 using RemoteRelay.MultiOutput;
 using RemoteRelay.SingleOutput;
-using RemoteRelay.Common;
 
 namespace RemoteRelay;
 
 public class MainWindowViewModel : ViewModelBase
 {
-    private readonly AppSettings _settings;
+   public MainWindowViewModel()
+   {
+      Debug.WriteLine(Guid.NewGuid());
 
-    public MainWindowViewModel()
-    {
-        Debug.WriteLine(Guid.NewGuid());
-        
-        //Load settings from config.json
-        _settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText("config.json"));
-        _settings.ServerName = Dns.GetHostName();
+      // Load ServerDetails.json
+      var serverInfo = JsonSerializer.Deserialize<ServerDetails>(File.ReadAllText("ServerDetails.json"));
 
-      SwitcherClient.InitializeInstance(_settings);
+      SwitcherClient.InitializeInstance(new Uri($"http://{serverInfo.Host}:{serverInfo.Port}/relay"));
+      SwitcherClient.Instance.RequestSettings();
 
-        OperationViewModel = _settings.Outputs.Count == 1
-            ? new MultiOutputViewModel()
-            : new SingleOutputViewModel(_settings);
-        // Get all unique inputs
-        OperationViewModel = new SingleOutputViewModel(_settings);
-    }
+      Thread.Sleep(2000);
 
-    public ViewModelBase OperationViewModel { get; set; }
+      OperationViewModel = SwitcherClient.Instance.Settings.Outputs.Count == 1
+         ? new MultiOutputViewModel()
+         : new SingleOutputViewModel(SwitcherClient.Instance.Settings);
+      // Get all unique inputs
+      // Get all unique inputs
+      OperationViewModel = new SingleOutputViewModel(SwitcherClient.Instance.Settings);
+
+      SwitcherClient.Instance.RequestStatus();
+   }
+
+   public ViewModelBase OperationViewModel { get; set; }
 }
