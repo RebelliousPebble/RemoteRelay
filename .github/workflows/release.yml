@@ -1,0 +1,96 @@
+name: Create Release
+
+on:
+  workflow_dispatch: # Allows manual triggering
+  push:
+    tags:
+      - 'v*.*.*' # Triggers on tags like v1.0.0, v1.2.3, v1.0.0-beta, etc.
+
+jobs:
+  build_and_release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore RemoteRelay.sln
+
+      - name: Build
+        run: dotnet build RemoteRelay.sln --configuration Release --no-restore
+
+      - name: Publish RemoteRelay Client (Linux ARM64)
+        run: dotnet publish RemoteRelay/RemoteRelay.csproj --configuration Release /p:PublishProfile=FolderProfile -o ./publish/RemoteRelay-Client-linux-arm64
+
+      - name: Publish RemoteRelay Client (Win x64)
+        run: dotnet publish RemoteRelay/RemoteRelay.csproj --configuration Release /p:PublishProfile=FolderProfile1 -o ./publish/RemoteRelay-Client-win-x64
+
+      - name: Publish RemoteRelay.Server (Linux ARM64)
+        run: dotnet publish RemoteRelay.Server/RemoteRelay.Server.csproj --configuration Release /p:PublishProfile=FolderProfile -o ./publish/RemoteRelay-Server-linux-arm64
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            Automated release for ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+
+      - name: Zip RemoteRelay Client (Linux ARM64)
+        run: |
+          cd ./publish/RemoteRelay-Client-linux-arm64
+          zip -r ../../RemoteRelay-Client-linux-arm64.zip .
+          cd ../..
+
+      - name: Zip RemoteRelay Client (Win x64)
+        run: |
+          cd ./publish/RemoteRelay-Client-win-x64
+          zip -r ../../RemoteRelay-Client-win-x64.zip .
+          cd ../..
+
+      - name: Zip RemoteRelay.Server (Linux ARM64)
+        run: |
+          cd ./publish/RemoteRelay-Server-linux-arm64
+          zip -r ../../RemoteRelay-Server-linux-arm64.zip .
+          cd ../..
+
+      - name: Upload RemoteRelay Client (Linux ARM64) to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./RemoteRelay-Client-linux-arm64.zip
+          asset_name: RemoteRelay-Client-linux-arm64.zip
+          asset_content_type: application/zip
+
+      - name: Upload RemoteRelay Client (Win x64) to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./RemoteRelay-Client-win-x64.zip
+          asset_name: RemoteRelay-Client-win-x64.zip
+          asset_content_type: application/zip
+
+      - name: Upload RemoteRelay.Server (Linux ARM64) to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./RemoteRelay-Server-linux-arm64.zip
+          asset_name: RemoteRelay-Server-linux-arm64.zip
+          asset_content_type: application/zip
