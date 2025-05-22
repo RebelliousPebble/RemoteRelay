@@ -20,11 +20,13 @@
             <ColumnDefinition />
         </Grid.ColumnDefinitions>
 
-        <Label Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" FontFamily="Arial" FontStretch="Normal" 
-               HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Content="{Binding StatusMessage}"
-               HorizontalContentAlignment="Center"
-               VerticalContentAlignment="Center"
-               Padding="5" />
+        <Viewbox Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Stretch="Uniform">
+            <Label FontStretch="Normal" 
+                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Content="{Binding StatusMessage}"
+                   HorizontalContentAlignment="Center"
+                   VerticalContentAlignment="Center"
+                   Padding="20" />
+        </Viewbox>
 
         <!-- The buttons for source selection -->
         <ItemsControl ItemsSource="{Binding Inputs}"

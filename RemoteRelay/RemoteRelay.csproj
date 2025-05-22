@@ -10,16 +10,16 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="11.2.4" />
-        <PackageReference Include="Avalonia.Desktop" Version="11.2.4" />
-        <PackageReference Include="Avalonia.ReactiveUI" Version="11.2.4" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.4" />
-        <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.4" />
+        <PackageReference Include="Avalonia" Version="11.3.0" />
+        <PackageReference Include="Avalonia.Desktop" Version="11.3.0" />
+        <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.0" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.0" />
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.0" />
         <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
-        <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.2.4" />
+        <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.3.0" />
         <PackageReference Include="Live.Avalonia" Version="1.4.1" />
-        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.2" />
-        <PackageReference Include="System.Device.Gpio" Version="3.2.0" />
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.5" />
+        <PackageReference Include="System.Device.Gpio" Version="4.0.1" />
         <PackageReference Include="System.Net.Sockets" Version="4.3.0" />
     </ItemGroup>
 
