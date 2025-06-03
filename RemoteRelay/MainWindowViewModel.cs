@@ -1,13 +1,12 @@
 using System;
 using System.Diagnostics;
-using System;
-using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
-using System.Threading.Tasks; // Added for Task
-using System.Reactive.Linq; // Added for Rx
-using Avalonia.Threading; // Added for AvaloniaScheduler
+using System.Threading.Tasks;
+using System.Timers;
+using ReactiveUI;
+using RemoteRelay.Common;
 using RemoteRelay.MultiOutput;
 using RemoteRelay.SingleOutput;
 
@@ -16,18 +15,18 @@ namespace RemoteRelay;
 public class MainWindowViewModel : ViewModelBase
 {
    private const int RetryIntervalSeconds = 5;
-   private IDisposable? _retrySubscription;
+   private System.Timers.Timer? _retryTimer;
    private int _retryCountdown;
 
-   private string _serverStatusMessage;
+   private string _serverStatusMessage = string.Empty;
    public string ServerStatusMessage
    {
       get => _serverStatusMessage;
       set => this.RaiseAndSetIfChanged(ref _serverStatusMessage, value);
    }
 
-   private ViewModelBase _operationViewModel;
-   public ViewModelBase OperationViewModel
+   private ViewModelBase? _operationViewModel;
+   public ViewModelBase? OperationViewModel
    {
       get => _operationViewModel;
       set
@@ -70,44 +69,48 @@ public class MainWindowViewModel : ViewModelBase
 
    private void StartRetryTimer()
    {
-       _retrySubscription?.Dispose(); // Dispose any existing subscription
+       _retryTimer?.Stop();
+       _retryTimer?.Dispose();
 
        _retryCountdown = RetryIntervalSeconds;
        UpdateServerStatusMessageForRetry();
 
-       _retrySubscription = Observable.Interval(TimeSpan.FromSeconds(1), AvaloniaScheduler.Instance)
-           .Subscribe(async _ =>
+       _retryTimer = new System.Timers.Timer(1000); // 1 second interval
+       _retryTimer.Elapsed += async (sender, e) =>
+       {
+           if (_retryCountdown > 0)
            {
-               if (_retryCountdown > 0)
+               _retryCountdown--;
+               UpdateServerStatusMessageForRetry();
+           }
+
+           if (_retryCountdown <= 0)
+           {
+               _retryTimer?.Stop();
+               _retryTimer?.Dispose();
+               _retryTimer = null;
+
+               ServerStatusMessage = $"Server offline. Trying to connect to {SwitcherClient.Instance.ServerUri}. Retrying now...";
+
+               bool connected = await SwitcherClient.Instance.ConnectAsync();
+               if (connected)
                {
-                   _retryCountdown--;
-                   UpdateServerStatusMessageForRetry();
+                   await OnConnected();
                }
-
-               if (_retryCountdown <= 0)
+               else
                {
-                   _retrySubscription?.Dispose();
-                   _retrySubscription = null;
-
-                   ServerStatusMessage = $"Server offline. Trying to connect to {SwitcherClient.Instance.ServerUri}. Retrying now...";
-
-                   bool connected = await SwitcherClient.Instance.ConnectAsync();
-                   if (connected)
-                   {
-                       await OnConnected();
-                   }
-                   else
-                   {
-                       StartRetryTimer();
-                   }
+                   StartRetryTimer();
                }
-           });
+           }
+       };
+       _retryTimer.Start();
    }
 
    private async Task OnConnected()
    {
-      _retrySubscription?.Dispose();
-      _retrySubscription = null;
+      _retryTimer?.Stop();
+      _retryTimer?.Dispose();
+      _retryTimer = null;
 
       ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri}. Fetching settings...";
       SwitcherClient.Instance.RequestSettings();
@@ -116,16 +119,16 @@ public class MainWindowViewModel : ViewModelBase
       if (settings != null)
       {
          // Corrected logic for OperationViewModel initialization using the local 'settings' variable
-         OperationViewModel = settings.Outputs.Count > 1
+         OperationViewModel = settings.Value.Outputs.Count > 1
              ? new MultiOutputViewModel() // Assuming MultiOutputViewModel takes no params or different ones
-             : new SingleOutputViewModel(settings);
+             : new SingleOutputViewModel(settings.Value);
 
          SwitcherClient.Instance.RequestStatus();
       }
       else
       {
          ServerStatusMessage = "Failed to retrieve valid settings from server.";
-         OperationViewModel = null; // Ensure OpViewModel is null if settings are null
+         // OperationViewModel can be set to null since it's now nullable
       }
    }
 }
