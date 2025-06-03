@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using ReactiveUI;
+using System.Reactive.Linq; // Added for ObserveOn, Subscribe
 using RemoteRelay.Common;
 using RemoteRelay.MultiOutput;
 using RemoteRelay.SingleOutput;
@@ -48,6 +49,31 @@ public class MainWindowViewModel : ViewModelBase
       SwitcherClient.InitializeInstance(serverUri);
 
       _ = InitializeConnectionAsync();
+
+      // Subscribe to configuration changes
+      SwitcherClient.Instance.ConfigurationChanged
+          .ObserveOn(RxApp.MainThreadScheduler) // Ensure UI updates are on the main thread
+          .Subscribe(HandleConfigurationUpdate);
+          // .DisposeWith(this); // Requires IDisposable implementation and a DisposeWith mechanism
+                                 // For now, manual disposal or CompositeDisposable would be needed if VM is disposed.
+   }
+
+   private void ProcessSettings(AppSettings settings)
+   {
+      OperationViewModel = settings.Outputs.Count > 1
+          ? new MultiOutputViewModel()
+          : new SingleOutputViewModel(settings);
+      ServerStatusMessage = $"Configuration processed. Operating with {settings.Outputs.Count} output(s).";
+      // Potentially update other VM properties based on settings
+      Debug.WriteLine($"Processed settings for {settings.Outputs.Count} outputs.");
+   }
+
+   private void HandleConfigurationUpdate(AppSettings newSettings)
+   {
+      ServerStatusMessage = "Configuration updated by server. Applying new settings...";
+      Debug.WriteLine("Received unsolicited configuration update from server.");
+      ProcessSettings(newSettings);
+      SwitcherClient.Instance.RequestStatus(); // Refresh system state display
    }
 
    private async Task InitializeConnectionAsync()
@@ -118,17 +144,13 @@ public class MainWindowViewModel : ViewModelBase
 
       if (settings != null)
       {
-         // Corrected logic for OperationViewModel initialization using the local 'settings' variable
-         OperationViewModel = settings.Value.Outputs.Count > 1
-             ? new MultiOutputViewModel() // Assuming MultiOutputViewModel takes no params or different ones
-             : new SingleOutputViewModel(settings.Value);
-
+         ProcessSettings(settings.Value);
          SwitcherClient.Instance.RequestStatus();
       }
       else
       {
-         ServerStatusMessage = "Failed to retrieve valid settings from server.";
-         // OperationViewModel can be set to null since it's now nullable
+         ServerStatusMessage = "Failed to retrieve valid settings from server after initial connect.";
+         OperationViewModel = null;
       }
    }
 }

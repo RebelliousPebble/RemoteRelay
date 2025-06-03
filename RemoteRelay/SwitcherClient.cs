@@ -18,6 +18,7 @@ public class SwitcherClient
    private TaskCompletionSource<AppSettings?> _settingsTcs;
 
    public Subject<Dictionary<string, string>> _stateChanged = new();
+   public Subject<AppSettings> ConfigurationChanged { get; } = new Subject<AppSettings>();
 
    private SwitcherClient(Uri hubUri)
    {
@@ -36,6 +37,7 @@ public class SwitcherClient
       {
          _settings = settings;
          _settingsTcs.TrySetResult(settings); // Complete the TCS with the received settings
+         ConfigurationChanged.OnNext(settings); // Notify subscribers about the new configuration
       });
    }
 
