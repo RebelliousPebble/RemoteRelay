@@ -22,5 +22,14 @@
         </DataTemplate>
     </Window.DataTemplates>
 
-    <ContentControl Content="{Binding OperationViewModel}" />
+    <DockPanel>
+        <TextBlock Text="{Binding ServerStatusMessage}"
+                   DockPanel.Dock="Top"
+                   HorizontalAlignment="Center"
+                   Margin="5" />
+        <ContentControl Content="{Binding OperationViewModel}"
+                        IsVisible="{Binding IsOperationViewReady}"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch" />
+    </DockPanel>
 </Window>
