@@ -52,19 +52,6 @@ jobs:
       - name: Run makeself
         run: makeself ./makeself_stage ./remote-relay-installer.sh "RemoteRelay Installer" ./install.sh
 
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          body: |
-            Automated release for ${{ github.ref_name }}
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
-
       - name: Zip RemoteRelay Client (Linux ARM64)
         run: |
           cd ./publish/RemoteRelay-Client-linux-arm64
@@ -84,41 +71,25 @@ jobs:
           cd ../..
 
       - name: Upload RemoteRelay Client (Linux ARM64) to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./RemoteRelay-Client-linux-arm64.zip
-          asset_name: RemoteRelay-Client-linux-arm64.zip
-          asset_content_type: application/zip
+          name: RemoteRelay-Client-linux-arm64.zip
+          path: ./RemoteRelay-Client-linux-arm64.zip
 
       - name: Upload RemoteRelay Client (Win x64) to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./RemoteRelay-Client-win-x64.zip
-          asset_name: RemoteRelay-Client-win-x64.zip
-          asset_content_type: application/zip
+          name: RemoteRelay-Client-win-x64.zip
+          path: ./RemoteRelay-Client-win-x64.zip
 
       - name: Upload RemoteRelay.Server (Linux ARM64) to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./RemoteRelay-Server-linux-arm64.zip
-          asset_name: RemoteRelay-Server-linux-arm64.zip
-          asset_content_type: application/zip
+          name: RemoteRelay-Server-linux-arm64.zip
+          path: ./RemoteRelay-Server-linux-arm64.zip
 
       - name: Upload RemoteRelay Installer (Raspberry Pi) to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./remote-relay-installer.sh
-          asset_name: remote-relay-installer.sh
-          asset_content_type: application/x-makeself
+          name: remote-relay-installer.sh
+          path: ./remote-relay-installer.sh
