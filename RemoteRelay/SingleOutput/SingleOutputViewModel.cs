@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Reactive;
 using System.Reactive.Linq;
+using System.Threading.Tasks;
 using System.Reactive.Subjects;
 using Avalonia.Media.Imaging;
 using ReactiveUI;
@@ -53,13 +55,8 @@ public class SingleOutputViewModel : ViewModelBase
             (output, input) => (Output: output, Input: input))
          .Where(x => x.Input != null);
 
-      if (Path.Exists(settings.LogoFile))
-      {
-         if (Path.IsPathFullyQualified(settings.LogoFile))
-            StationLogo = new Bitmap(settings.LogoFile);
-         else
-            StationLogo = new Bitmap(Path.Combine(Directory.GetCurrentDirectory(), settings.LogoFile));
-      }
+      // Load the station logo asynchronously
+      _ = LoadStationLogoAsync();
 
 
       // On selection of an input
@@ -131,6 +128,50 @@ public class SingleOutputViewModel : ViewModelBase
    {
       get => _stationLogo;
       set => this.RaiseAndSetIfChanged(ref _stationLogo, value);
+   }
+
+   private async Task LoadStationLogoAsync()
+   {
+      if (SwitcherClient.Instance.ServerUri == null)
+      {
+         Debug.WriteLine("Server URI is not configured. Cannot load station logo.");
+         return;
+      }
+
+      try
+      {
+         var logoUrl = new Uri(SwitcherClient.Instance.ServerUri, "/logo");
+         using var httpClient = new HttpClient();
+         var response = await httpClient.GetAsync(logoUrl);
+
+         if (response.IsSuccessStatusCode)
+         {
+            var imageBytes = await response.Content.ReadAsByteArrayAsync();
+            using var memoryStream = new MemoryStream(imageBytes);
+            StationLogo = new Bitmap(memoryStream);
+            Debug.WriteLine($"Successfully loaded station logo from {logoUrl}");
+         }
+         else
+         {
+            Debug.WriteLine($"Failed to load station logo. Status code: {response.StatusCode} from {logoUrl}");
+            StationLogo = null;
+         }
+      }
+      catch (HttpRequestException ex)
+      {
+         Debug.WriteLine($"Error loading station logo: {ex.Message}");
+         StationLogo = null;
+      }
+      catch (TaskCanceledException ex)
+      {
+         Debug.WriteLine($"Error loading station logo (timeout/cancelled): {ex.Message}");
+         StationLogo = null;
+      }
+      catch (Exception ex)
+      {
+         Debug.WriteLine($"An unexpected error occurred while loading station logo: {ex.Message}");
+         StationLogo = null;
+      }
    }
 
    private void OnCancel()
