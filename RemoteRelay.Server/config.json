@@ -3,17 +3,20 @@
     {
       "SourceName": "Studio 1",
       "OutputName": "Newsroom 1",
-      "RelayPin": 26
+      "RelayPin": 26,
+      "ActiveLow": true
     },
     {
       "SourceName": "Studio 2",
       "OutputName": "Newsroom 1",
-      "RelayPin": 20
+      "RelayPin": 20,
+      "ActiveLow": true
     },
     {
       "SourceName": "Automation",
       "OutputName": "Newsroom 1",
-      "RelayPin": 21
+      "RelayPin": 21,
+      "ActiveLow": true
     }
   ],
   "DefaultSource": "Studio 1",

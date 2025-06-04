@@ -20,10 +20,12 @@ public class SwitcherState
       foreach (var source in settings.Sources)
       {
          var newSource = new Source(source);
-         foreach (var output in
+         foreach (var outputName in
                   settings.Routes.Where(x => x.SourceName == source).Select(x => x.OutputName).Distinct())
-            newSource.AddOutputPin(ref _gpiController, output,
-               settings.Routes.First(x => x.SourceName == source && x.OutputName == output).RelayPin);
+         {
+            var relayConfig = settings.Routes.First(x => x.SourceName == source && x.OutputName == outputName);
+            newSource.AddOutputPin(ref _gpiController, relayConfig);
+         }
          _sources.Add(newSource);
       }
 
