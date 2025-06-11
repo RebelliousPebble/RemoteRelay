@@ -1,6 +1,33 @@
-using System.Device.Gpio; // Assuming PinValue is here
+using System.Device.Gpio;
 
 namespace RemoteRelay.Common;
+
+public class PhysicalButtonConfig
+{
+    public int PinNumber { get; set; }
+
+    private string _triggerState = "Low"; // Default value
+    public string TriggerState
+    {
+        get => _triggerState;
+        private set // Private setter for validation
+        {
+            if (string.Equals(value, "High", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value, "Low", StringComparison.OrdinalIgnoreCase))
+            {
+                _triggerState = value;
+            }
+            else
+            {
+                throw new ArgumentException("TriggerState must be either \"High\" or \"Low\".");
+            }
+        }
+    }
+
+    public PinValue GetTriggerPinValue() => _triggerState.Equals("Low", StringComparison.OrdinalIgnoreCase) ? PinValue.Low : PinValue.High;
+
+    public PinEventTypes GetTriggerEventType() => _triggerState.Equals("Low", StringComparison.OrdinalIgnoreCase) ? PinEventTypes.Falling : PinEventTypes.Rising;
+}
 
 public class InactiveRelaySettings
 {
@@ -34,7 +61,7 @@ public struct AppSettings
    //Sources
    public List<RelayConfig> Routes { get; set; }
    public string? DefaultSource { get; set; }
-   public Dictionary<string, int> PhysicalSourceButtons { get; set; }
+   public Dictionary<string, PhysicalButtonConfig> PhysicalSourceButtons { get; set; } = new();
    public IReadOnlyCollection<string> Sources => Routes.Select(x => x.SourceName).Distinct().ToArray();
    public IReadOnlyCollection<string> Outputs => Routes.Select(x => x.OutputName).Distinct().ToArray();
 
