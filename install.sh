@@ -77,15 +77,80 @@ install_server() {
   mkdir -p "$USER_SYSTEMD_DIR"
   SERVICE_FILE="$USER_SYSTEMD_DIR/remote-relay-server.service"
 
+  # Check for jq
+  if ! command -v jq &> /dev/null
+  then
+      echo "Warning: jq could not be found. Please install jq to enable InactiveRelay configuration in systemd service."
+      echo "On Debian/Ubuntu: sudo apt install jq"
+      echo "Skipping InactiveRelay configuration for systemd service."
+      # Set INACTIVE_RELAY_PIN and INACTIVE_RELAY_STATE to empty so the rest of the script behaves as if no config found
+      INACTIVE_RELAY_PIN=""
+      INACTIVE_RELAY_STATE=""
+  else
+      CONFIG_FILE="$SERVER_INSTALL_DIR/config.json"
+      if [ -f "$CONFIG_FILE" ]; then
+          INACTIVE_RELAY_PIN=$(jq -r '.InactiveRelay.Pin // empty' "$CONFIG_FILE")
+          INACTIVE_RELAY_STATE=$(jq -r '.InactiveRelay.InactiveState // empty' "$CONFIG_FILE")
+      else
+          echo "Warning: Configuration file $CONFIG_FILE not found. Skipping InactiveRelay configuration."
+          INACTIVE_RELAY_PIN=""
+          INACTIVE_RELAY_STATE=""
+      fi
+  fi
+
+  EXEC_START_PRE=""
+  EXEC_STOP_POST=""
+
+  if [ -n "$INACTIVE_RELAY_PIN" ] && [ -n "$INACTIVE_RELAY_STATE" ]; then
+      # Basic validation (more robust validation is in the C# app)
+      if [[ "$INACTIVE_RELAY_PIN" =~ ^[0-9]+$ ]] && \
+         ( [[ "$INACTIVE_RELAY_STATE" == "High" ]] || [[ "$INACTIVE_RELAY_STATE" == "Low" ]] || \
+           [[ "$INACTIVE_RELAY_STATE" == "high" ]] || [[ "$INACTIVE_RELAY_STATE" == "low" ]] ); then # Added lowercase variants
+
+          REMOTE_RELAY_EXEC="$SERVER_INSTALL_DIR/RemoteRelay.Server" # Path to the executable
+          # Ensure state is capitalized for the command, C# app is case-insensitive but consistency is good
+          CMD_STATE=$(echo "$INACTIVE_RELAY_STATE" | awk '{print toupper(substr($0,1,1))tolower(substr($0,2))}')
+
+          EXEC_START_PRE="ExecStartPre=$REMOTE_RELAY_EXEC set-inactive-relay --pin $INACTIVE_RELAY_PIN --state $CMD_STATE"
+          EXEC_STOP_POST="ExecStopPost=$REMOTE_RELAY_EXEC set-inactive-relay --pin $INACTIVE_RELAY_PIN --state $CMD_STATE"
+          echo "Inactive Relay systemd integration: Configured for pin $INACTIVE_RELAY_PIN, state $CMD_STATE"
+      else
+          echo "Warning: InactiveRelay Pin ('$INACTIVE_RELAY_PIN') or State ('$INACTIVE_RELAY_STATE') in $CONFIG_FILE is invalid. Skipping systemd pre/post commands."
+      fi
+  else
+      if command -v jq &> /dev/null && [ -f "$CONFIG_FILE" ]; then # Only show this if jq was found and config file existed
+        echo "InactiveRelay settings not found or incomplete in $CONFIG_FILE. Skipping systemd pre/post commands."
+      fi
+  fi
+
   echo "Creating systemd user service file: $SERVICE_FILE"
+  # Start creating the service file
   cat << EOF > "$SERVICE_FILE"
 [Unit]
 Description=RemoteRelay Server (User Service)
 After=network.target
 
 [Service]
-ExecStart=$SERVER_INSTALL_DIR/RemoteRelay.Server
+EOF
+
+  # Conditionally add ExecStartPre
+  if [ -n "$EXEC_START_PRE" ]; then
+    echo "$EXEC_START_PRE" >> "$SERVICE_FILE"
+  fi
+
+  # Add mandatory lines
+  cat << EOF >> "$SERVICE_FILE"
 WorkingDirectory=$SERVER_INSTALL_DIR
+ExecStart=$SERVER_INSTALL_DIR/RemoteRelay.Server
+EOF
+
+  # Conditionally add ExecStopPost
+  if [ -n "$EXEC_STOP_POST" ]; then
+    echo "$EXEC_STOP_POST" >> "$SERVICE_FILE"
+  fi
+
+  # Add the rest of the service file
+  cat << EOF >> "$SERVICE_FILE"
 Restart=always
 # Environment=DOTNET_ROOT=/usr/share/dotnet # May not be needed if .NET is in PATH or self-contained
 

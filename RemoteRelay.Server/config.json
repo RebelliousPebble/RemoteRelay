@@ -25,6 +25,10 @@
     "Studio 2": 9
   },
   "ServerPort": 33101,
+  "InactiveRelay": {
+    "Pin": 12,
+    "InactiveState": "High"
+  },
   "FlashOnSelect": true,
   "ShowIpOnScreen": true,
   "Logging": true,

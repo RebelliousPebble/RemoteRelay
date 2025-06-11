@@ -9,9 +9,12 @@ public class SwitcherState
    private readonly AppSettings _settings;
    private readonly List<Source> _sources = new();
    private readonly int outputCount;
+   private GpioPin? _inactiveRelayPin;
 
    public SwitcherState(AppSettings settings)
    {
+      _settings = settings; // Store settings first
+
       if (IsGpiEnvironment())
          _gpiController = new GpioController(PinNumberingScheme.Logical);
       else
@@ -36,7 +39,38 @@ public class SwitcherState
          SwitchSource(settings.DefaultSource,
             settings.Routes.First(x => x.SourceName == settings.DefaultSource).OutputName);
 
-      _settings = settings;
+      // Initialize Inactive Relay Pin
+      if (_settings.InactiveRelay != null && _settings.InactiveRelay.Pin > 0)
+      {
+         try
+         {
+            _inactiveRelayPin = _gpiController.OpenPin(_settings.InactiveRelay.Pin, PinMode.Output);
+            _inactiveRelayPin.Write(_settings.InactiveRelay.GetActivePinValue());
+            Console.WriteLine($"Inactive relay pin {_settings.InactiveRelay.Pin} initialized to active state ({_settings.InactiveRelay.GetActivePinValue()}).");
+         }
+         catch (Exception ex)
+         {
+            Console.WriteLine($"Error initializing inactive relay pin {_settings.InactiveRelay.Pin}: {ex.Message}");
+            _inactiveRelayPin = null; // Ensure it's null if setup failed
+         }
+      }
+   }
+
+   public void SetInactiveRelayToInactiveState()
+   {
+      if (_inactiveRelayPin != null && _settings.InactiveRelay != null)
+      {
+         try
+         {
+            var inactiveValue = _settings.InactiveRelay.GetInactivePinValue();
+            _inactiveRelayPin.Write(inactiveValue);
+            Console.WriteLine($"Inactive relay pin {_settings.InactiveRelay.Pin} set to inactive state ({inactiveValue}).");
+         }
+         catch (Exception ex)
+         {
+            Console.WriteLine($"Error setting inactive relay pin {_settings.InactiveRelay.Pin} to inactive state: {ex.Message}");
+         }
+      }
    }
 
    public void SwitchSource(string source, string output)
