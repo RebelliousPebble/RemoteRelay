@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using System.IO;
 using RemoteRelay.Common;
 using System.Device.Gpio; // Added for GpioController and PinValue
+using Microsoft.AspNetCore.SignalR; // Added for IHubContext
 
 namespace RemoteRelay.Server;
 
@@ -86,7 +87,9 @@ public class Program
 
       var builder = WebApplication.CreateBuilder(args);
       builder.Services.AddSignalR();
-      builder.Services.AddSingleton<SwitcherState>(_ => new SwitcherState(_settings));
+      // Updated SwitcherState registration to include IHubContext<RelayHub> and corrected argument order
+      builder.Services.AddSingleton<SwitcherState>(sp =>
+          new SwitcherState(_settings, sp.GetRequiredService<IHubContext<RelayHub>>()));
       builder.WebHost.ConfigureKestrel(options => { options.ListenAnyIP(_settings.ServerPort); });
 
       var app = builder.Build();
