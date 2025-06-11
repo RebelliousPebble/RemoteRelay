@@ -58,23 +58,40 @@ public class InactiveRelaySettings
 [Serializable]
 public struct AppSettings
 {
-   //Sources
-   public List<RelayConfig> Routes { get; set; }
-   public string? DefaultSource { get; set; }
-   public Dictionary<string, PhysicalButtonConfig> PhysicalSourceButtons { get; set; } = new();
+    //Sources
+    public List<RelayConfig> Routes { get; set; }
+    public string? DefaultSource { get; set; }
+    public Dictionary<string, PhysicalButtonConfig> PhysicalSourceButtons { get; set; }
+    // Note: Sources and Outputs are expression-bodied members and don't need initialization here.
+
+    //Communication
+    public int ServerPort { get; set; }
+    public string? TcpMirrorAddress { get; set; }
+    public int? TcpMirrorPort { get; set; }
+
+    //Options
+    public InactiveRelaySettings? InactiveRelay { get; set; }
+    public bool FlashOnSelect { get; set; }
+    public bool ShowIpOnScreen { get; set; }
+    public bool Logging { get; set; }
+    public string LogoFile { get; set; }
+
+    // Parameterless constructor for struct initialization
+    public AppSettings()
+    {
+        PhysicalSourceButtons = new Dictionary<string, PhysicalButtonConfig>();
+        Routes = new List<RelayConfig>();
+        LogoFile = string.Empty;
+        // DefaultSource, TcpMirrorAddress are nullable strings (default to null)
+        // ServerPort, TcpMirrorPort are value types (default to 0 or null)
+        // InactiveRelay is a nullable struct (defaults to null)
+        // Booleans (FlashOnSelect, ShowIpOnScreen, Logging) default to false.
+        // Sources and Outputs are computed properties.
+    }
+
    public IReadOnlyCollection<string> Sources => Routes.Select(x => x.SourceName).Distinct().ToArray();
    public IReadOnlyCollection<string> Outputs => Routes.Select(x => x.OutputName).Distinct().ToArray();
 
 
-   //Communication
-   public int ServerPort { get; set; }
-   public string? TcpMirrorAddress { get; set; }
-   public int? TcpMirrorPort { get; set; }
-
-   //Options
-   public InactiveRelaySettings? InactiveRelay { get; set; }
-   public bool FlashOnSelect { get; set; }
-   public bool ShowIpOnScreen { get; set; }
-   public bool Logging { get; set; }
-   public string LogoFile { get; set; }
+   // Properties moved up to group them, constructor added above.
 }
