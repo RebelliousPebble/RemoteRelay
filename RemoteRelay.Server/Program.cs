@@ -24,7 +24,7 @@ public class Program
 
       app.MapGet("/logo", async (SwitcherState switcherState, ILogger<Program> logger, IWebHostEnvironment env) =>
       {
-         var appSettings = switcherState.Settings;
+         var appSettings = switcherState.GetSettings();
          if (appSettings == null || string.IsNullOrWhiteSpace(appSettings.LogoFile))
          {
             logger.LogWarning("Logo file path is not configured.");
