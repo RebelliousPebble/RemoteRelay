@@ -56,10 +56,12 @@
                         Margin="10" />
 
         <Image Source="{Binding StationLogo}"
-                        Grid.Row="2"
-                        Grid.Column="2"
-                        Margin="10" 
-                        Stretch="UniformToFill"/>
+               Grid.Row="2"
+               Grid.Column="1"
+               Margin="10"
+               Stretch="Uniform"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"/>
 
         <ContentControl Content="{Binding Output}"
                         Grid.Row="2"
