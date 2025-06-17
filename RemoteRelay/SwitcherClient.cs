@@ -9,7 +9,7 @@ namespace RemoteRelay;
 
 public class SwitcherClient
 {
-   private static SwitcherClient _instance;
+   private static SwitcherClient? _instance;
    private static readonly object _lock = new();
    private readonly HubConnection _connection;
    private AppSettings? _settings;
@@ -76,17 +76,19 @@ public class SwitcherClient
       {
          await _connection.StartAsync();
          _isConnected = true;
+         
+         // Small delay to ensure connection is fully established
+         await Task.Delay(100);
+         
          return true;
       }
-      catch (System.Net.Http.HttpRequestException ex)
+      catch (System.Net.Http.HttpRequestException)
       {
-         // Log exception ex?
          _isConnected = false;
          return false;
       }
-      catch (Exception ex)
+      catch (Exception)
       {
-         // Log exception ex?
          _isConnected = false;
          return false;
       }

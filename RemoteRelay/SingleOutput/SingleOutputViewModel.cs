@@ -188,7 +188,7 @@ public class SingleOutputViewModel : ViewModelBase
       if (newStatus.Count != 0)
       {
          foreach (var key in newStatus)
-            if (key.Value is not null or "")
+            if (!string.IsNullOrEmpty(key.Value))
             {
                Debug.WriteLine($"{key.Key} is active");
                Inputs.First(x => x.SourceName == key.Key).SetState(SourceState.Active);

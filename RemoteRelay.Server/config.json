@@ -21,10 +21,18 @@
   ],
   "DefaultSource": "Studio 1",
   "PhysicalSourceButtons": {
-    "Studio 1": 10,
-    "Studio 2": 9
+    "Studio 1": {
+      "PinNumber": 10,
+      "TriggerState": "Low"
+    },
+    "Studio 2": {
+      "PinNumber": 9,
+      "TriggerState": "Low"
+    }
   },
   "ServerPort": 33101,
+  "TcpMirrorAddress": null,
+  "TcpMirrorPort": null,
   "InactiveRelay": {
     "Pin": 12,
     "InactiveState": "High"
@@ -32,5 +40,5 @@
   "FlashOnSelect": true,
   "ShowIpOnScreen": true,
   "Logging": true,
-  "LogoFile": ""
+  "LogoFile": "C:\\Users\\glenn\\Pictures\\Screenshots\\image.png"
 }

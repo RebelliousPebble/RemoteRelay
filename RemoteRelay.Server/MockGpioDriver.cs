@@ -8,8 +8,28 @@ namespace RemoteRelay.Server;
 public class MockGpioDriver : GpioDriver
 {
     private readonly Dictionary<int, PinValue> _pinStates = new();
+    private static MockGpioDriver? _instance;
 
     protected override int PinCount => 40;
+
+    public MockGpioDriver()
+    {
+        _instance = this;
+        // Initialize with Studio 1 active (pin 26 = Low, others = High for ActiveLow config)
+        _pinStates[26] = PinValue.Low;  // Studio 1 - Active
+        _pinStates[20] = PinValue.High; // Studio 2 - Inactive  
+        _pinStates[21] = PinValue.High; // Automation - Inactive
+        _pinStates[12] = PinValue.Low;  // Inactive relay - Active
+    }
+
+    public static void UpdatePinState(int pinNumber, PinValue value)
+    {
+        if (_instance != null)
+        {
+            Console.WriteLine($"MockGpioDriver.UpdatePinState: Updating pin {pinNumber} to {value}");
+            _instance._pinStates[pinNumber] = value;
+        }
+    }
 
     protected override int ConvertPinNumberToLogicalNumberingScheme(int pinNumber)
     {
@@ -46,7 +66,7 @@ public class MockGpioDriver : GpioDriver
 
     protected override void Write(int pinNumber, PinValue value)
     {
-        Console.WriteLine($"Writing value {value} to pin {pinNumber}");
+        Console.WriteLine($"MockGpioDriver.Write: Writing value {value} to pin {pinNumber}");
         _pinStates[pinNumber] = value;
     }
 
@@ -59,8 +79,9 @@ public class MockGpioDriver : GpioDriver
 
     protected override PinValue Read(int pinNumber)
     {
-        Console.WriteLine($"Reading value from pin {pinNumber}");
-        return _pinStates.ContainsKey(pinNumber) ? _pinStates[pinNumber] : PinValue.Low;
+        var value = _pinStates.ContainsKey(pinNumber) ? _pinStates[pinNumber] : PinValue.High; // Default to High for inactive relays
+        Console.WriteLine($"Reading value from pin {pinNumber}: {value}");
+        return value;
     }
 
     protected override void AddCallbackForPinValueChangedEvent(int pinNumber, PinEventTypes eventTypes,

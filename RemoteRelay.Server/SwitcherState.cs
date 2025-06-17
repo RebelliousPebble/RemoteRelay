@@ -44,8 +44,12 @@ public class SwitcherState
 
       // Set default source
       if (settings.DefaultSource != null)
-         SwitchSource(settings.DefaultSource,
-            settings.Routes.First(x => x.SourceName == settings.DefaultSource).OutputName);
+      {
+         Console.WriteLine($"Setting default source to: {settings.DefaultSource}");
+         var defaultOutput = settings.Routes.First(x => x.SourceName == settings.DefaultSource).OutputName;
+         Console.WriteLine($"Default output: {defaultOutput}");
+         SwitchSource(settings.DefaultSource, defaultOutput);
+      }
 
       // Initialize Inactive Relay Pin
       if (_settings.InactiveRelay != null && _settings.InactiveRelay.Pin > 0)
@@ -172,24 +176,41 @@ public class SwitcherState
 
    public void SwitchSource(string source, string output)
    {
+      Console.WriteLine($"SwitchSource called: source='{source}', output='{output}', outputCount={outputCount}");
+      
       if (outputCount == 1)
          foreach (var x in _sources)
             if (x._sourceName == source)
+            {
+               Console.WriteLine($"Enabling output '{output}' for source '{x._sourceName}'");
                x.EnableOutput(output);
+            }
             else
+            {
+               Console.WriteLine($"Disabling outputs for source '{x._sourceName}'");
                x.DisableOutput();
+            }
       else
          foreach (var x in _sources)
             if (x._sourceName == source)
+            {
+               Console.WriteLine($"Enabling output '{output}' for source '{x._sourceName}' (multi-output mode)");
                x.EnableOutput(output);
+            }
    }
 
    // first value is index of source, second value is output index (-1 is not outputting)
    public Dictionary<string, string> GetSystemState()
    {
       var state = new Dictionary<string, string>();
-      foreach (var x in _sources) state.Add(x._sourceName, x.GetCurrentRoute());
-
+      foreach (var x in _sources) 
+      {
+         var currentRoute = x.GetCurrentRoute();
+         state.Add(x._sourceName, currentRoute);
+         Console.WriteLine($"Source '{x._sourceName}' current route: '{currentRoute}'");
+      }
+      
+      Console.WriteLine($"System state: {string.Join(", ", state.Select(kvp => $"{kvp.Key}='{kvp.Value}'"))}");
       return state;
    }
 

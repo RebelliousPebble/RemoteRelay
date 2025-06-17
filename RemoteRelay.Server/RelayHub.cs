@@ -4,13 +4,19 @@ namespace RemoteRelay.Server;
 
 public class RelayHub : Hub
 {
-   private readonly List<Source> _sources;
-
    private readonly SwitcherState _switcherState;
 
    public RelayHub(SwitcherState switcherState)
    {
       _switcherState = switcherState;
+   }
+
+   public override async Task OnConnectedAsync()
+   {
+      // Send current system state to newly connected client
+      var state = _switcherState.GetSystemState();
+      await Clients.Caller.SendAsync("SystemState", state);
+      await base.OnConnectedAsync();
    }
 
    public async Task SwitchSource(string sourceName, string outputName)

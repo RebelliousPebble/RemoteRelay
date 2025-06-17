@@ -24,8 +24,12 @@ public class Source
 
    public void EnableOutput(string output = "")
    {
+      Console.WriteLine($"EnableOutput called with output: '{output}'");
+      Console.WriteLine($"Available outputs: {string.Join(", ", _relayOutputPins.Keys)}");
+      
       if (_relayOutputPins.ContainsKey(output))
       {
+         Console.WriteLine($"Found output '{output}' in relay pins");
          var targetPinConfig = _relayOutputPins[output].Config;
          foreach (var entry in _relayOutputPins)
          {
@@ -33,28 +37,45 @@ public class Source
             var config = entry.Value.Config;
             if (entry.Key == output)
             {
-               pin.Write(targetPinConfig.ActiveLow ? PinValue.Low : PinValue.High);
+               var writeValue = targetPinConfig.ActiveLow ? PinValue.Low : PinValue.High;
+               Console.WriteLine($"Writing {writeValue} to pin {config.RelayPin} for active output '{entry.Key}'");
+               pin.Write(writeValue);
+               MockGpioDriver.UpdatePinState(config.RelayPin, writeValue);
             }
             else
             {
-               pin.Write(config.ActiveLow ? PinValue.High : PinValue.Low);
+               var writeValue = config.ActiveLow ? PinValue.High : PinValue.Low;
+               Console.WriteLine($"Writing {writeValue} to pin {config.RelayPin} for inactive output '{entry.Key}'");
+               pin.Write(writeValue);
+               MockGpioDriver.UpdatePinState(config.RelayPin, writeValue);
             }
          }
+      }
+      else
+      {
+         Console.WriteLine($"Output '{output}' NOT found in relay pins");
       }
    }
 
    public void DisableOutput()
    {
+      Console.WriteLine($"DisableOutput called for source '{_sourceName}'");
+      Console.WriteLine($"Available outputs: {string.Join(", ", _relayOutputPins.Keys)}");
+      
       foreach (var entry in _relayOutputPins)
       {
          var pin = entry.Value.Pin;
          var config = entry.Value.Config;
-         pin.Write(config.ActiveLow ? PinValue.High : PinValue.Low);
+         var writeValue = config.ActiveLow ? PinValue.High : PinValue.Low;
+         Console.WriteLine($"Writing {writeValue} to pin {config.RelayPin} for disabled output '{entry.Key}'");
+         pin.Write(writeValue);
+         MockGpioDriver.UpdatePinState(config.RelayPin, writeValue);
       }
    }
 
    public string GetCurrentRoute()
    {
-      return _relayOutputPins.FirstOrDefault(x => x.Value.Pin.Read() == (x.Value.Config.ActiveLow ? PinValue.Low : PinValue.High)).Key;
+      var activeOutput = _relayOutputPins.FirstOrDefault(x => x.Value.Pin.Read() == (x.Value.Config.ActiveLow ? PinValue.Low : PinValue.High));
+      return activeOutput.Key ?? string.Empty;
    }
 }
