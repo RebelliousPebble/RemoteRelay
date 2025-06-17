@@ -209,71 +209,186 @@ install_client() {
     echo "The application might look for this file. It should have been part of the published client files."
   fi
 
-  # LXDE Autostart configuration for client (Kiosk Mode on Raspberry Pi)
-  LXDE_AUTOSTART_DIR="$USER_HOME/.config/lxsession/LXDE-pi"
-  AUTOSTART_FILE="$LXDE_AUTOSTART_DIR/autostart"
-  CLIENT_EXEC_PATH="$CLIENT_INSTALL_DIR/RemoteRelay"
+  CLIENT_EXEC_PATH="$CLIENT_INSTALL_DIR/RemoteRelay" # Ensure this is defined for the Exec line
 
-  echo "Configuring autostart for RemoteRelay Client..."
-  mkdir -p "$LXDE_AUTOSTART_DIR"
+  # XDG Autostart configuration
+  XDG_AUTOSTART_DIR="$USER_HOME/.config/autostart"
+  DESKTOP_FILE_NAME="remote-relay-client.desktop"
+  DESKTOP_FILE_PATH="$XDG_AUTOSTART_DIR/$DESKTOP_FILE_NAME"
+
+  echo "Creating XDG autostart directory: $XDG_AUTOSTART_DIR..."
+  mkdir -p "$XDG_AUTOSTART_DIR"
   if [ $? -ne 0 ]; then
-    echo "Warning: Could not create LXDE autostart directory: $LXDE_AUTOSTART_DIR"
+    echo "Warning: Could not create XDG autostart directory: $XDG_AUTOSTART_DIR"
     echo "Client may not autostart. Please check permissions or create it manually."
   else
-    touch "$AUTOSTART_FILE" # Create the file if it doesn't exist
+    echo "Creating XDG autostart file: $DESKTOP_FILE_PATH..."
+    # Using a subshell for variable expansion within heredoc to avoid issues with current shell context
+    (
+    cat << EOF > "$DESKTOP_FILE_PATH"
+[Desktop Entry]
+Type=Application
+Name=RemoteRelay Client
+Comment=Autostart RemoteRelay Client for kiosk mode
+Exec=$CLIENT_EXEC_PATH
+Terminal=false
+Categories=Network;Application;
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+EOF
+    )
     if [ $? -ne 0 ]; then
-      echo "Warning: Could not create LXDE autostart file: $AUTOSTART_FILE"
-      echo "Client may not autostart. Please check permissions or create it manually."
+        echo "Warning: Failed to create .desktop file: $DESKTOP_FILE_PATH"
+        echo "Client may not autostart. Please check file system permissions."
     else
-      echo "Disabling screen blanking and power saving for LXDE session..."
-      CMD_NOBLANK="@xset s noblank"
-      CMD_SOFF="@xset s off"
-      CMD_NODPMS="@xset -dpms"
+        chmod 644 "$DESKTOP_FILE_PATH"
+        echo "RemoteRelay Client XDG autostart entry created at $DESKTOP_FILE_PATH."
 
-      if ! grep -qF "$CMD_NOBLANK" "$AUTOSTART_FILE"; then
-        echo "Adding: $CMD_NOBLANK to $AUTOSTART_FILE"
-        echo "$CMD_NOBLANK" >> "$AUTOSTART_FILE"
-      else
-        echo "Command to disable screen blanking already exists in $AUTOSTART_FILE."
-      fi
+        # Modify the Exec line to include xset commands
+        XSET_COMMANDS="xset s noblank && xset s off && xset -dpms"
+        # Escape CLIENT_EXEC_PATH for sed pattern and ensure quotes in replacement for sh -c
+        # The pattern must match exactly what was written: Exec=$CLIENT_EXEC_PATH
+        # The replacement needs to be Exec=sh -c 'xset... && "actual_path"'
 
-      if ! grep -qF "$CMD_SOFF" "$AUTOSTART_FILE"; then
-        echo "Adding: $CMD_SOFF to $AUTOSTART_FILE"
-        echo "$CMD_SOFF" >> "$AUTOSTART_FILE"
-      else
-        echo "Command to turn off screen saver already exists in $AUTOSTART_FILE."
-      fi
+        # Correctly escape for sed pattern: $CLIENT_EXEC_PATH can contain '/'
+        # Using # as delimiter for sed. $CLIENT_EXEC_PATH itself does not need regex escaping for the pattern.
+        # For the replacement string, quotes around $CLIENT_EXEC_PATH are important for sh -c
+        ESCAPED_CLIENT_EXEC_PATH_FOR_SED_PATTERN=$(printf '%s\n' "$CLIENT_EXEC_PATH" | sed 's:[][\\/.^$*]:\\&:g')
 
-      if ! grep -qF "$CMD_NODPMS" "$AUTOSTART_FILE"; then
-        echo "Adding: $CMD_NODPMS to $AUTOSTART_FILE"
-        echo "$CMD_NODPMS" >> "$AUTOSTART_FILE"
-      else
-        echo "Command to disable DPMS already exists in $AUTOSTART_FILE."
-      fi
-      echo "Screen blanking and power saving settings configured in $AUTOSTART_FILE."
+        # Check if .desktop file exists before modifying (it should, as we just created it)
+        if [ -f "$DESKTOP_FILE_PATH" ]; then
+            echo "Modifying Exec line in $DESKTOP_FILE_PATH to include screen blanking commands..."
+            # Using simpler sed to replace the whole line starting with Exec=
+            # This is less prone to issues with special characters in CLIENT_EXEC_PATH for the pattern matching part.
+            # The key is that the original file has "Exec=$CLIENT_EXEC_PATH"
+            # We replace that entire line.
+            TEMP_EXEC_LINE_CONTENT="sh -c '$XSET_COMMANDS && \"$CLIENT_EXEC_PATH\"'"
+            sed -i "/^Exec=/c\Exec=${TEMP_EXEC_LINE_CONTENT}" "$DESKTOP_FILE_PATH"
 
-      # Check if the client command already exists
-      if grep -qF "@\"$CLIENT_EXEC_PATH\"" "$AUTOSTART_FILE"; then
-        echo "RemoteRelay Client autostart command already exists in $AUTOSTART_FILE."
-      else
-        echo "Adding RemoteRelay Client to LXDE autostart file: $AUTOSTART_FILE"
-        echo "@\"$CLIENT_EXEC_PATH\"" >> "$AUTOSTART_FILE"
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to add client to autostart file $AUTOSTART_FILE."
-            echo "You may need to add '@\"$CLIENT_EXEC_PATH\"' to it manually."
+            if [ $? -eq 0 ]; then
+                echo "Exec line updated successfully to include xset commands."
+            else
+                echo "Warning: Failed to update Exec line in $DESKTOP_FILE_PATH. Screen blanking may not be disabled."
+            fi
         else
-            echo "RemoteRelay Client added to autostart."
+            echo "Warning: $DESKTOP_FILE_PATH not found for modification. This should not happen."
         fi
-      fi
     fi
   fi
 
   echo "Client Installation Complete."
-  echo "The RemoteRelay Client is configured to start automatically with the LXDE desktop session."
-  echo "Screen blanking and power saving features for the session have also been disabled via autostart."
-  echo "It will attempt to start when the $APP_USER user logs into the graphical desktop."
-  echo "If the client does not start, or if screen blanking persists, check the $AUTOSTART_FILE file and ensure the commands and paths are correct."
-  echo "You can also try running '$CLIENT_EXEC_PATH' manually from a terminal within the LXDE session to check for client errors."
+  echo "The RemoteRelay Client is now configured to start automatically with your desktop session using XDG autostart."
+  echo "X11 screen blanking and power saving settings will also be applied at session start."
+  echo "If the client does not start automatically, or if screen blanking persists, please check the file $DESKTOP_FILE_PATH"
+  echo "and ensure your desktop environment supports XDG autostart and xset commands."
+  echo "You can also try running it manually: $CLIENT_EXEC_PATH"
+  echo
+
+  # Attempt to configure Wayfire screen blanking (Wayland)
+  WAYFIRE_INI="$USER_HOME/.config/wayfire.ini"
+  echo # Add a newline for better separation of messages
+  echo "--- Wayland/Wayfire Kiosk Configuration (Experimental) ---"
+
+  if [ -f "$WAYFIRE_INI" ]; then # Check if it's a regular file
+      if [ -s "$WAYFIRE_INI" ]; then # If it exists and is non-empty
+          echo "Attempting to configure Wayfire screen blanking in $WAYFIRE_INI..."
+          # AWK script content
+          AWK_SCRIPT='
+          BEGIN {
+              in_idle_section = 0;
+              dpms_key_processed_in_current_idle_section = 0;
+              screensaver_key_processed_in_current_idle_section = 0;
+              any_idle_section_found = 0;
+              current_section_lines_buffer = "";
+          }
+
+          function flush_current_section_buffer() {
+              if (in_idle_section) {
+                  print current_section_lines_buffer;
+                  if (!dpms_key_processed_in_current_idle_section) {
+                      print "dpms_timeout = 0";
+                  }
+                  if (!screensaver_key_processed_in_current_idle_section) {
+                      print "screensaver_timeout = 0";
+                  }
+              } else {
+                  if (current_section_lines_buffer != "") {
+                       print current_section_lines_buffer;
+                  }
+              }
+              current_section_lines_buffer = "";
+              in_idle_section = 0;
+              dpms_key_processed_in_current_idle_section = 0;
+              screensaver_key_processed_in_current_idle_section = 0;
+          }
+
+          /^\s*\[idle\]\s*$/ {
+              flush_current_section_buffer();
+              in_idle_section = 1;
+              any_idle_section_found = 1;
+              current_section_lines_buffer = $0;
+              next;
+          }
+
+          /^\s*\[.*\]\s*$/ {
+              flush_current_section_buffer();
+              current_section_lines_buffer = $0;
+              next;
+          }
+
+          {
+              if (in_idle_section) {
+                  if ($0 ~ /^\s*dpms_timeout\s*=/) {
+                      current_section_lines_buffer = (current_section_lines_buffer == "" ? "" : current_section_lines_buffer ORS) "dpms_timeout = 0";
+                      dpms_key_processed_in_current_idle_section = 1;
+                      next;
+                  }
+                  if ($0 ~ /^\s*screensaver_timeout\s*=/) {
+                      current_section_lines_buffer = (current_section_lines_buffer == "" ? "" : current_section_lines_buffer ORS) "screensaver_timeout = 0";
+                      screensaver_key_processed_in_current_idle_section = 1;
+                      next;
+                  }
+              }
+              current_section_lines_buffer = (current_section_lines_buffer == "" ? $0 : current_section_lines_buffer ORS $0);
+          }
+
+          END {
+              flush_current_section_buffer();
+              if (!any_idle_section_found) {
+                  print "[idle]";
+                  print "dpms_timeout = 0";
+                  print "screensaver_timeout = 0";
+              }
+          }
+          '
+          WAYFIRE_INI_TMP="$WAYFIRE_INI.tmp.$$"
+
+          if awk "$AWK_SCRIPT" "$WAYFIRE_INI" > "$WAYFIRE_INI_TMP"; then
+              if [ -s "$WAYFIRE_INI_TMP" ]; then
+                  mv "$WAYFIRE_INI_TMP" "$WAYFIRE_INI"
+                  echo "Wayfire configuration ($WAYFIRE_INI) attempt to disable screen blanking complete."
+                  echo "Please verify $WAYFIRE_INI, especially the [idle] section, to ensure settings (dpms_timeout=0, screensaver_timeout=0) are correct."
+              else
+                  echo "Warning: Processing $WAYFIRE_INI with awk resulted in an empty file. Original file preserved."
+                  rm -f "$WAYFIRE_INI_TMP"
+              fi
+          else
+              echo "Warning: awk command failed while processing $WAYFIRE_INI. Original file preserved."
+              rm -f "$WAYFIRE_INI_TMP"
+          fi
+      else # File exists but is empty
+          echo "Wayfire configuration file $WAYFIRE_INI is empty. Appending default kiosk settings for [idle] section."
+          {
+              echo "[idle]"
+              echo "dpms_timeout = 0"
+              echo "screensaver_timeout = 0"
+          } >> "$WAYFIRE_INI"
+          echo "Wayfire configuration ($WAYFIRE_INI) updated with default kiosk settings for idle."
+      fi
+  else # File does not exist
+      echo "Wayfire configuration file $WAYFIRE_INI not found. Skipping Wayland/Wayfire screen blanking setup."
+  fi
+  echo "--- End of Wayland/Wayfire Kiosk Configuration ---"
   echo
 }
 
@@ -287,7 +402,7 @@ fi
 
 if [[ "$INSTALL_TYPE" == "C" || "$INSTALL_TYPE" == "B" ]]; then
   install_client
-  SUMMARY_MESSAGE+="  - RemoteRelay Client installed to $CLIENT_INSTALL_DIR, configured with Server Address $SERVER_ADDRESS, and set up to autostart with the LXDE desktop session.\\n"
+  SUMMARY_MESSAGE+="  - RemoteRelay Client installed to $CLIENT_INSTALL_DIR, configured with Server Address $SERVER_ADDRESS, and set up for XDG autostart.\\n"
 fi
 
 # Completion Message
@@ -300,7 +415,7 @@ echo "User services (server, if installed) can be managed with:"
 echo "  systemctl --user [status|start|stop|restart] remote-relay-server.service"
 echo "To enable the server service to start on boot (even without login), run:"
 echo "  sudo loginctl enable-linger $APP_USER"
-echo "The client (if installed) is configured to start automatically with the LXDE desktop session for user $APP_USER."
+echo "The client (if installed) is configured to start automatically with your desktop session via XDG autostart."
 echo "If the server was also installed on this machine, ensure the server is running before the client attempts to connect."
 
 exit 0
