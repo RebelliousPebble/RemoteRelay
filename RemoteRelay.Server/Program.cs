@@ -87,9 +87,7 @@ public class Program
 
       var builder = WebApplication.CreateBuilder(args);
       builder.Services.AddSignalR();
-      // Updated SwitcherState registration to include IHubContext<RelayHub> and corrected argument order
-      builder.Services.AddSingleton<SwitcherState>(sp =>
-          new SwitcherState(_settings, sp.GetRequiredService<IHubContext<RelayHub>>()));
+      builder.Services.AddSingleton<SwitcherState>(sp => new SwitcherState(_settings, sp.GetRequiredService<Microsoft.AspNetCore.SignalR.IHubContext<RelayHub>>()));
       builder.WebHost.ConfigureKestrel(options => { options.ListenAnyIP(_settings.ServerPort); });
 
       var app = builder.Build();
