@@ -209,57 +209,71 @@ install_client() {
     echo "The application might look for this file. It should have been part of the published client files."
   fi
 
-  # User-level systemd service for client
-  USER_SYSTEMD_DIR="$USER_HOME/.config/systemd/user"
-  mkdir -p "$USER_SYSTEMD_DIR" # Ensure directory exists
-  CLIENT_SERVICE_FILE="$USER_SYSTEMD_DIR/remote-relay-client.service"
+  # LXDE Autostart configuration for client (Kiosk Mode on Raspberry Pi)
+  LXDE_AUTOSTART_DIR="$USER_HOME/.config/lxsession/LXDE-pi"
+  AUTOSTART_FILE="$LXDE_AUTOSTART_DIR/autostart"
+  CLIENT_EXEC_PATH="$CLIENT_INSTALL_DIR/RemoteRelay"
 
-  echo "Creating systemd user service file for client: $CLIENT_SERVICE_FILE"
-
-  CLIENT_AFTER_DIRECTIVE=""
-  CLIENT_WANTED_BY_DIRECTIVE="graphical-session.target" # Ensures it starts with the graphical session
-
-  if [[ "$INSTALL_TYPE" == "B" ]]; then # If installing Both server and client
-    CLIENT_AFTER_DIRECTIVE="remote-relay-server.service $CLIENT_AFTER_DIRECTIVE"
-  fi
-
-  cat << EOF > "$CLIENT_SERVICE_FILE"
-[Unit]
-Description=RemoteRelay Client (User Service)
-After=$CLIENT_AFTER_DIRECTIVE
-
-[Service]
-ExecStart=$CLIENT_INSTALL_DIR/RemoteRelay
-WorkingDirectory=$CLIENT_INSTALL_DIR
-Restart=always
-Environment="DISPLAY=:0" 
-Environment=XAUTHORITY=/home/pi/.Xauthority
-
-[Install]
-WantedBy=$CLIENT_WANTED_BY_DIRECTIVE
-EOF
-
-  echo "Reloading systemd user daemon..."
-  command systemctl --user daemon-reload
-  echo "Enabling remote-relay-client user service..."
-  command systemctl --user enable remote-relay-client.service
-  
-  # Attempt to start the service. It might only fully work after next login if GUI elements are involved.
-  echo "Attempting to start remote-relay-client user service..."
-  command systemctl --user start remote-relay-client.service
-
-  if command systemctl --user is-active --quiet remote-relay-client.service; then
-    echo "RemoteRelay Client user service is active."
+  echo "Configuring autostart for RemoteRelay Client..."
+  mkdir -p "$LXDE_AUTOSTART_DIR"
+  if [ $? -ne 0 ]; then
+    echo "Warning: Could not create LXDE autostart directory: $LXDE_AUTOSTART_DIR"
+    echo "Client may not autostart. Please check permissions or create it manually."
   else
-    echo "Warning: RemoteRelay Client user service may not have started correctly yet (e.g. if graphical session not fully ready)."
-    echo "It is enabled and should start automatically on your next login."
-    echo "Check status with: journalctl --user -u remote-relay-client.service"
+    touch "$AUTOSTART_FILE" # Create the file if it doesn't exist
+    if [ $? -ne 0 ]; then
+      echo "Warning: Could not create LXDE autostart file: $AUTOSTART_FILE"
+      echo "Client may not autostart. Please check permissions or create it manually."
+    else
+      echo "Disabling screen blanking and power saving for LXDE session..."
+      CMD_NOBLANK="@xset s noblank"
+      CMD_SOFF="@xset s off"
+      CMD_NODPMS="@xset -dpms"
+
+      if ! grep -qF "$CMD_NOBLANK" "$AUTOSTART_FILE"; then
+        echo "Adding: $CMD_NOBLANK to $AUTOSTART_FILE"
+        echo "$CMD_NOBLANK" >> "$AUTOSTART_FILE"
+      else
+        echo "Command to disable screen blanking already exists in $AUTOSTART_FILE."
+      fi
+
+      if ! grep -qF "$CMD_SOFF" "$AUTOSTART_FILE"; then
+        echo "Adding: $CMD_SOFF to $AUTOSTART_FILE"
+        echo "$CMD_SOFF" >> "$AUTOSTART_FILE"
+      else
+        echo "Command to turn off screen saver already exists in $AUTOSTART_FILE."
+      fi
+
+      if ! grep -qF "$CMD_NODPMS" "$AUTOSTART_FILE"; then
+        echo "Adding: $CMD_NODPMS to $AUTOSTART_FILE"
+        echo "$CMD_NODPMS" >> "$AUTOSTART_FILE"
+      else
+        echo "Command to disable DPMS already exists in $AUTOSTART_FILE."
+      fi
+      echo "Screen blanking and power saving settings configured in $AUTOSTART_FILE."
+
+      # Check if the client command already exists
+      if grep -qF "@\"$CLIENT_EXEC_PATH\"" "$AUTOSTART_FILE"; then
+        echo "RemoteRelay Client autostart command already exists in $AUTOSTART_FILE."
+      else
+        echo "Adding RemoteRelay Client to LXDE autostart file: $AUTOSTART_FILE"
+        echo "@\"$CLIENT_EXEC_PATH\"" >> "$AUTOSTART_FILE"
+        if [ $? -ne 0 ]; then
+            echo "Warning: Failed to add client to autostart file $AUTOSTART_FILE."
+            echo "You may need to add '@\"$CLIENT_EXEC_PATH\"' to it manually."
+        else
+            echo "RemoteRelay Client added to autostart."
+        fi
+      fi
+    fi
   fi
 
   echo "Client Installation Complete."
-  echo "The RemoteRelay Client is configured as a systemd user service."
-  echo "It will attempt to start automatically when you log in."
-  echo "To manage the client service, use: systemctl --user [status|start|stop|restart] remote-relay-client.service"
+  echo "The RemoteRelay Client is configured to start automatically with the LXDE desktop session."
+  echo "Screen blanking and power saving features for the session have also been disabled via autostart."
+  echo "It will attempt to start when the $APP_USER user logs into the graphical desktop."
+  echo "If the client does not start, or if screen blanking persists, check the $AUTOSTART_FILE file and ensure the commands and paths are correct."
+  echo "You can also try running '$CLIENT_EXEC_PATH' manually from a terminal within the LXDE session to check for client errors."
   echo
 }
 
@@ -273,7 +287,7 @@ fi
 
 if [[ "$INSTALL_TYPE" == "C" || "$INSTALL_TYPE" == "B" ]]; then
   install_client
-  SUMMARY_MESSAGE+="  - RemoteRelay Client installed to $CLIENT_INSTALL_DIR, configured with Server Address $SERVER_ADDRESS, and set up as a systemd user service.\\n"
+  SUMMARY_MESSAGE+="  - RemoteRelay Client installed to $CLIENT_INSTALL_DIR, configured with Server Address $SERVER_ADDRESS, and set up to autostart with the LXDE desktop session.\\n"
 fi
 
 # Completion Message
@@ -282,12 +296,11 @@ echo " RemoteRelay Installation Finished! "
 echo "----------------------------------------------------"
 echo -e "$SUMMARY_MESSAGE"
 echo "Please check the output above for any warnings or errors."
-echo "User services (both server and client if installed) can be managed with:"
+echo "User services (server, if installed) can be managed with:"
 echo "  systemctl --user [status|start|stop|restart] remote-relay-server.service"
-echo "  systemctl --user [status|start|stop|restart] remote-relay-client.service"
-echo "To enable services to start on boot (even without login, especially for the server), run:"
+echo "To enable the server service to start on boot (even without login), run:"
 echo "  sudo loginctl enable-linger $APP_USER"
-echo "The client service is configured to start with your graphical session."
-echo "If both were installed on this machine, the client is set to start after the server."
+echo "The client (if installed) is configured to start automatically with the LXDE desktop session for user $APP_USER."
+echo "If the server was also installed on this machine, ensure the server is running before the client attempts to connect."
 
 exit 0
