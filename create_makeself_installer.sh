@@ -28,6 +28,8 @@ INSTALLER_LABEL="RemoteRelay Installer (${TARGET_RUNTIME})"
 # It should be present in the root of your project.
 STARTUP_SCRIPT_SOURCE="install.sh"
 STARTUP_SCRIPT_DEST_IN_ARCHIVE="install.sh"
+UNINSTALL_SCRIPT_SOURCE="uninstall.sh"
+UNINSTALL_SCRIPT_DEST_IN_ARCHIVE="uninstall.sh"
 
 
 # --- Helper Functions ---
@@ -54,6 +56,10 @@ echo ""
 echo "Step 1: Checking prerequisites..."
 check_command "dotnet"
 check_command "makeself"
+# dos2unix is helpful but not strictly required - we have a fallback with sed
+if ! command -v "dos2unix" &> /dev/null; then
+    echo "Note: dos2unix not found. Will use sed fallback for line ending conversion."
+fi
 echo "Prerequisites met."
 echo ""
 
@@ -112,16 +118,46 @@ if [ ! -f "${STARTUP_SCRIPT_SOURCE}" ]; then
 fi
 cp "${STARTUP_SCRIPT_SOURCE}" "${MAKSELF_STAGE_DIR}/${STARTUP_SCRIPT_DEST_IN_ARCHIVE}"
 # Add this line to fix potential CRLF issues if install.sh comes from Windows
-# Using perl for more robust line ending conversion
-perl -pi -e 's/\\r\\n/\\n/g; s/\\r/\\n/g' "${MAKSELF_STAGE_DIR}/${STARTUP_SCRIPT_DEST_IN_ARCHIVE}"
+# Using sed for more reliable line ending conversion and ensuring Unix format
+sed -i 's/\r$//' "${MAKSELF_STAGE_DIR}/${STARTUP_SCRIPT_DEST_IN_ARCHIVE}"
+# Ensure the script has Unix line endings and is executable
+dos2unix "${MAKSELF_STAGE_DIR}/${STARTUP_SCRIPT_DEST_IN_ARCHIVE}" 2>/dev/null || true
 chmod +x "${MAKSELF_STAGE_DIR}/${STARTUP_SCRIPT_DEST_IN_ARCHIVE}"
+
+echo "  Copying and preparing uninstall script (${UNINSTALL_SCRIPT_SOURCE})..."
+if [ ! -f "${UNINSTALL_SCRIPT_SOURCE}" ]; then
+    echo "Warning: Uninstall script '${UNINSTALL_SCRIPT_SOURCE}' not found in project root. Uninstall functionality will not be available."
+else
+    cp "${UNINSTALL_SCRIPT_SOURCE}" "${MAKSELF_STAGE_DIR}/${UNINSTALL_SCRIPT_DEST_IN_ARCHIVE}"
+    # Fix potential CRLF issues
+    sed -i 's/\r$//' "${MAKSELF_STAGE_DIR}/${UNINSTALL_SCRIPT_DEST_IN_ARCHIVE}"
+    dos2unix "${MAKSELF_STAGE_DIR}/${UNINSTALL_SCRIPT_DEST_IN_ARCHIVE}" 2>/dev/null || true
+    chmod +x "${MAKSELF_STAGE_DIR}/${UNINSTALL_SCRIPT_DEST_IN_ARCHIVE}"
+fi
+
+# Verify the install script is properly formatted
+echo "  Verifying install script..."
+if ! head -1 "${MAKSELF_STAGE_DIR}/${STARTUP_SCRIPT_DEST_IN_ARCHIVE}" | grep -q "#!/bin/bash"; then
+    echo "Warning: Install script may not have proper shebang line"
+fi
+if [ ! -x "${MAKSELF_STAGE_DIR}/${STARTUP_SCRIPT_DEST_IN_ARCHIVE}" ]; then
+    echo "Error: Install script is not executable after chmod"
+    exit 1
+fi
 echo "Staging complete. Staging directory: ${MAKSELF_STAGE_DIR}"
 echo ""
 
 echo "Step 8: Running makeself to create the installer..."
+# Verify the staging directory structure before creating the archive
+echo "  Staging directory contents:"
+ls -la "${MAKSELF_STAGE_DIR}"
+echo "  Install script details:"
+ls -la "${MAKSELF_STAGE_DIR}/${STARTUP_SCRIPT_DEST_IN_ARCHIVE}"
+file "${MAKSELF_STAGE_DIR}/${STARTUP_SCRIPT_DEST_IN_ARCHIVE}" || true
+
 # Using --gzip for compression, which is common.
 # The startup script path for makeself is relative to the root of the archive.
-# Changed "./${STARTUP_SCRIPT_DEST_IN_ARCHIVE}" to "${STARTUP_SCRIPT_DEST_IN_ARCHIVE}"
+# Make sure the startup script is properly referenced with ./ prefix
 makeself --gzip "${MAKSELF_STAGE_DIR}" "${INSTALLER_NAME}" "${INSTALLER_LABEL}" "./${STARTUP_SCRIPT_DEST_IN_ARCHIVE}"
 echo "Makeself execution complete."
 echo ""

@@ -18,6 +18,7 @@ CLIENT_INSTALL_DIR="$BASE_INSTALL_DIR/Client"
 # These are relative to the location of install.sh when extracted by makeself
 SERVER_FILES_SOURCE_DIR="server_files"
 CLIENT_FILES_SOURCE_DIR="client_files"
+UNINSTALL_SCRIPT_SOURCE="uninstall.sh"
 
 # Welcome Message
 echo "----------------------------------------------------"
@@ -26,8 +27,6 @@ echo "----------------------------------------------------"
 echo "Installing for user: $APP_USER"
 echo "Installation base directory: $BASE_INSTALL_DIR"
 echo
-
-# No root check needed if installing to home directory for user-level services/autostart
 
 # User Choices
 INSTALL_TYPE=""
@@ -57,6 +56,15 @@ fi
 
 echo # Newline for better readability
 
+# Check if server installation requires root privileges
+if [[ "$INSTALL_TYPE" == "S" || "$INSTALL_TYPE" == "B" ]]; then
+  if [ "$EUID" -ne 0 ]; then
+    echo "Error: Server installation requires root privileges to install as a system service."
+    echo "Please run this script with sudo when installing the server."
+    exit 1
+  fi
+fi
+
 # --- Server Installation ---
 install_server() {
   echo "Starting Server Installation..."
@@ -71,11 +79,13 @@ install_server() {
   # Copy all contents from the source to the target
   cp -a "$SERVER_FILES_SOURCE_DIR/." "$SERVER_INSTALL_DIR/"
   chmod +x "$SERVER_INSTALL_DIR/RemoteRelay.Server"
+  
+  # Set ownership to the target user
+  chown -R "$APP_USER:$APP_USER" "$SERVER_INSTALL_DIR"
 
-  # User-level systemd service
-  USER_SYSTEMD_DIR="$USER_HOME/.config/systemd/user"
-  mkdir -p "$USER_SYSTEMD_DIR"
-  SERVICE_FILE="$USER_SYSTEMD_DIR/remote-relay-server.service"
+  # System-level systemd service
+  SYSTEM_SYSTEMD_DIR="/etc/systemd/system"
+  SERVICE_FILE="$SYSTEM_SYSTEMD_DIR/remote-relay-server.service"
 
   # Check for jq
   if ! command -v jq &> /dev/null
@@ -123,14 +133,16 @@ install_server() {
       fi
   fi
 
-  echo "Creating systemd user service file: $SERVICE_FILE"
+  echo "Creating systemd system service file: $SERVICE_FILE"
   # Start creating the service file
   cat << EOF > "$SERVICE_FILE"
 [Unit]
-Description=RemoteRelay Server (User Service)
+Description=RemoteRelay Server (System Service)
 After=network.target
 
 [Service]
+User=$APP_USER
+Group=$APP_USER
 EOF
 
   # Conditionally add ExecStartPre
@@ -152,29 +164,29 @@ EOF
   # Add the rest of the service file
   cat << EOF >> "$SERVICE_FILE"
 Restart=always
+RestartSec=5
 # Environment=DOTNET_ROOT=/usr/share/dotnet # May not be needed if .NET is in PATH or self-contained
 
 [Install]
-WantedBy=default.target # For user services
+WantedBy=multi-user.target
 EOF
 
-  echo "Reloading systemd user daemon..."
-  command systemctl --user daemon-reload
-  echo "Enabling remote-relay-server user service..."
-  command systemctl --user enable remote-relay-server.service
-  echo "Starting remote-relay-server user service..."
-  command systemctl --user start remote-relay-server.service
+  echo "Reloading systemd daemon..."
+  systemctl daemon-reload
+  echo "Enabling remote-relay-server system service..."
+  systemctl enable remote-relay-server.service
+  echo "Starting remote-relay-server system service..."
+  systemctl start remote-relay-server.service
 
   # Check service status
-  if command systemctl --user is-active --quiet remote-relay-server.service; then
-    echo "RemoteRelay Server user service is active and running."
+  if systemctl is-active --quiet remote-relay-server.service; then
+    echo "RemoteRelay Server system service is active and running."
   else
-    echo "Warning: RemoteRelay Server user service failed to start. Check logs with 'journalctl --user -u remote-relay-server.service'"
+    echo "Warning: RemoteRelay Server system service failed to start. Check logs with 'journalctl -u remote-relay-server.service'"
   fi
   echo "Server Installation Complete."
-  echo "To manage the server, use: systemctl --user [status|start|stop|restart] remote-relay-server.service"
-  echo "User services require the user to be logged in and sometimes require 'linger' to be enabled for the user to run on boot without login:"
-  echo "sudo loginctl enable-linger $APP_USER"
+  echo "To manage the server, use: systemctl [status|start|stop|restart] remote-relay-server.service"
+  echo "The server will now start automatically on system boot."
   echo
 }
 
@@ -192,6 +204,9 @@ install_client() {
   # Copy all contents from the source to the target
   cp -a "$CLIENT_FILES_SOURCE_DIR/." "$CLIENT_INSTALL_DIR/"
   chmod +x "$CLIENT_INSTALL_DIR/RemoteRelay"
+  
+  # Set ownership to the target user (important when running with sudo)
+  chown -R "$APP_USER:$APP_USER" "$CLIENT_INSTALL_DIR"
 
   SERVER_DETAILS_FILE="$CLIENT_INSTALL_DIR/ServerDetails.json"
   if [ -f "$SERVER_DETAILS_FILE" ]; then
@@ -218,6 +233,8 @@ install_client() {
 
   echo "Creating XDG autostart directory: $XDG_AUTOSTART_DIR..."
   mkdir -p "$XDG_AUTOSTART_DIR"
+  # Ensure proper ownership of the autostart directory
+  chown "$APP_USER:$APP_USER" "$XDG_AUTOSTART_DIR" 2>/dev/null || true
   if [ $? -ne 0 ]; then
     echo "Warning: Could not create XDG autostart directory: $XDG_AUTOSTART_DIR"
     echo "Client may not autostart. Please check permissions or create it manually."
@@ -229,59 +246,59 @@ install_client() {
 [Desktop Entry]
 Type=Application
 Name=RemoteRelay Client
-Comment=Autostart RemoteRelay Client for kiosk mode
 Exec=$CLIENT_EXEC_PATH
 Terminal=false
-Categories=Network;Application;
-X-GNOME-Autostart-enabled=true
-NoDisplay=true
+Path=$CLIENT_INSTALL_DIR
 EOF
     )
     if [ $? -ne 0 ]; then
         echo "Warning: Failed to create .desktop file: $DESKTOP_FILE_PATH"
         echo "Client may not autostart. Please check file system permissions."
     else
-        chmod 644 "$DESKTOP_FILE_PATH"
+        chmod 755 "$DESKTOP_FILE_PATH"
+        chown "$APP_USER:$APP_USER" "$DESKTOP_FILE_PATH" 2>/dev/null || true
         echo "RemoteRelay Client XDG autostart entry created at $DESKTOP_FILE_PATH."
 
-        # Modify the Exec line to include xset commands
-        XSET_COMMANDS="xset s noblank && xset s off && xset -dpms"
-        # Escape CLIENT_EXEC_PATH for sed pattern and ensure quotes in replacement for sh -c
-        # The pattern must match exactly what was written: Exec=$CLIENT_EXEC_PATH
-        # The replacement needs to be Exec=sh -c 'xset... && "actual_path"'
+        # Ask user if they want kiosk mode (screen blanking disabled)
+        echo
+        read -p "Enable kiosk mode (disable screen blanking/power saving)? (y/N): " ENABLE_KIOSK
+        if [[ "$ENABLE_KIOSK" =~ ^[Yy]$ ]]; then
+            # Modify the Exec line to include xset commands while keeping the simple format
+            XSET_COMMANDS="xset s noblank && xset s off && xset -dpms"
+            # Check if .desktop file exists before modifying (it should, as we just created it)
+            if [ -f "$DESKTOP_FILE_PATH" ]; then
+                echo "Modifying Exec line in $DESKTOP_FILE_PATH to include screen blanking commands..."
+                # Replace the Exec line to include xset commands
+                TEMP_EXEC_LINE_CONTENT="sh -c '$XSET_COMMANDS && \"$CLIENT_EXEC_PATH\"'"
+                sed -i "/^Exec=/c\Exec=${TEMP_EXEC_LINE_CONTENT}" "$DESKTOP_FILE_PATH"
 
-        # Correctly escape for sed pattern: $CLIENT_EXEC_PATH can contain '/'
-        # Using # as delimiter for sed. $CLIENT_EXEC_PATH itself does not need regex escaping for the pattern.
-        # For the replacement string, quotes around $CLIENT_EXEC_PATH are important for sh -c
-        ESCAPED_CLIENT_EXEC_PATH_FOR_SED_PATTERN=$(printf '%s\n' "$CLIENT_EXEC_PATH" | sed 's:[][\\/.^$*]:\\&:g')
-
-        # Check if .desktop file exists before modifying (it should, as we just created it)
-        if [ -f "$DESKTOP_FILE_PATH" ]; then
-            echo "Modifying Exec line in $DESKTOP_FILE_PATH to include screen blanking commands..."
-            # Using simpler sed to replace the whole line starting with Exec=
-            # This is less prone to issues with special characters in CLIENT_EXEC_PATH for the pattern matching part.
-            # The key is that the original file has "Exec=$CLIENT_EXEC_PATH"
-            # We replace that entire line.
-            TEMP_EXEC_LINE_CONTENT="sh -c '$XSET_COMMANDS && \"$CLIENT_EXEC_PATH\"'"
-            sed -i "/^Exec=/c\Exec=${TEMP_EXEC_LINE_CONTENT}" "$DESKTOP_FILE_PATH"
-
-            if [ $? -eq 0 ]; then
-                echo "Exec line updated successfully to include xset commands."
+                if [ $? -eq 0 ]; then
+                    echo "Exec line updated successfully to include xset commands for kiosk mode."
+                else
+                    echo "Warning: Failed to update Exec line in $DESKTOP_FILE_PATH. Screen blanking may not be disabled."
+                fi
             else
-                echo "Warning: Failed to update Exec line in $DESKTOP_FILE_PATH. Screen blanking may not be disabled."
+                echo "Warning: $DESKTOP_FILE_PATH not found for modification. This should not happen."
             fi
         else
-            echo "Warning: $DESKTOP_FILE_PATH not found for modification. This should not happen."
+            echo "Kiosk mode disabled. Screen blanking settings will remain default."
         fi
     fi
   fi
 
   echo "Client Installation Complete."
   echo "The RemoteRelay Client is now configured to start automatically with your desktop session using XDG autostart."
-  echo "X11 screen blanking and power saving settings will also be applied at session start."
-  echo "If the client does not start automatically, or if screen blanking persists, please check the file $DESKTOP_FILE_PATH"
-  echo "and ensure your desktop environment supports XDG autostart and xset commands."
-  echo "You can also try running it manually: $CLIENT_EXEC_PATH"
+  if [[ "$ENABLE_KIOSK" =~ ^[Yy]$ ]]; then
+    echo "Kiosk mode enabled: X11 screen blanking and power saving settings will be disabled at session start."
+  fi
+  echo "If the client does not start automatically, please check the file $DESKTOP_FILE_PATH"
+  echo "and ensure your desktop environment supports XDG autostart."
+  echo
+  echo "Troubleshooting autostart issues:"
+  echo "1. Test manually: $CLIENT_EXEC_PATH"
+  echo "2. Test with working directory: cd '$CLIENT_INSTALL_DIR' && '$CLIENT_EXEC_PATH'"
+  echo "3. Check autostart logs: journalctl --user-unit graphical-session.target"
+  echo "4. Verify desktop file: desktop-file-validate '$DESKTOP_FILE_PATH'"
   echo
 
   # Attempt to configure Wayfire screen blanking (Wayland)
@@ -395,9 +412,22 @@ EOF
 # --- Perform Installations Based on User Choice ---
 SUMMARY_MESSAGE="Installation Summary:\\n"
 
+# Copy uninstall script to user's home directory
+UNINSTALL_SCRIPT_DEST="$USER_HOME/uninstall-remoteRelay.sh"
+if [ -f "$UNINSTALL_SCRIPT_SOURCE" ]; then
+  echo "Copying uninstall script to: $UNINSTALL_SCRIPT_DEST"
+  cp "$UNINSTALL_SCRIPT_SOURCE" "$UNINSTALL_SCRIPT_DEST"
+  chmod +x "$UNINSTALL_SCRIPT_DEST"
+  chown "$APP_USER:$APP_USER" "$UNINSTALL_SCRIPT_DEST" 2>/dev/null || true
+  echo "Uninstall script available at: $UNINSTALL_SCRIPT_DEST"
+  echo
+else
+  echo "Warning: Uninstall script not found in installer package."
+fi
+
 if [[ "$INSTALL_TYPE" == "S" || "$INSTALL_TYPE" == "B" ]]; then
   install_server
-  SUMMARY_MESSAGE+="  - RemoteRelay Server installed to $SERVER_INSTALL_DIR and configured as a systemd user service.\\n"
+  SUMMARY_MESSAGE+="  - RemoteRelay Server installed to $SERVER_INSTALL_DIR and configured as a systemd system service.\\n"
 fi
 
 if [[ "$INSTALL_TYPE" == "C" || "$INSTALL_TYPE" == "B" ]]; then
@@ -411,11 +441,15 @@ echo " RemoteRelay Installation Finished! "
 echo "----------------------------------------------------"
 echo -e "$SUMMARY_MESSAGE"
 echo "Please check the output above for any warnings or errors."
-echo "User services (server, if installed) can be managed with:"
-echo "  systemctl --user [status|start|stop|restart] remote-relay-server.service"
-echo "To enable the server service to start on boot (even without login), run:"
-echo "  sudo loginctl enable-linger $APP_USER"
+echo "System services (server, if installed) can be managed with:"
+echo "  systemctl [status|start|stop|restart] remote-relay-server.service"
+echo "The server service (if installed) will start automatically on system boot."
 echo "The client (if installed) is configured to start automatically with your desktop session via XDG autostart."
 echo "If the server was also installed on this machine, ensure the server is running before the client attempts to connect."
+echo
+if [ -f "$UNINSTALL_SCRIPT_DEST" ]; then
+  echo "To uninstall RemoteRelay, run: $UNINSTALL_SCRIPT_DEST"
+  echo "Note: Use sudo when uninstalling server components."
+fi
 
 exit 0

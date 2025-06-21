@@ -7,3 +7,6 @@ riderModule.iml
 /.idea/.idea.RemoteRelay/.idea
 /RemoteRelay/published
 /RemoteRelay.Server/published
+makeself_stage
+publish
+remote-relay-installer-linux-arm64.sh
