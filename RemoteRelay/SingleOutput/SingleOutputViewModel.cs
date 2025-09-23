@@ -87,6 +87,14 @@ public class SingleOutputViewModel : ViewModelBase
       _ = connection.Subscribe(x =>
       {
          _cancel.OnNext(Unit.Default);
+         
+         // Check if server is connected before attempting to switch
+         if (!Server.IsConnected)
+         {
+            _message.OnNext(Observable.Return("Server connection lost. Please wait for reconnection."));
+            return;
+         }
+         
          Server.SwitchSource(x.Input.SourceName, settings.Outputs.First());
          _message.OnNext(
             Observable

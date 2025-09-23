@@ -14,21 +14,25 @@ public class SwitcherClient
    private readonly HubConnection _connection;
    private AppSettings? _settings;
    private Uri _hubUri;
-   private bool _isConnected;
    private TaskCompletionSource<AppSettings?> _settingsTcs;
 
    public Subject<Dictionary<string, string>> _stateChanged = new();
+   public Subject<bool> _connectionStateChanged = new();
 
    private SwitcherClient(Uri hubUri)
    {
       _hubUri = hubUri;
-      _isConnected = false;
       _settingsTcs = new TaskCompletionSource<AppSettings?>(TaskCreationOptions.RunContinuationsAsynchronously);
       _connection = new HubConnectionBuilder()
          .WithAutomaticReconnect()
          .WithKeepAliveInterval(TimeSpan.FromSeconds(10))
          .WithUrl(hubUri)
          .Build();
+
+      // Handle connection state changes
+      _connection.Closed += OnConnectionClosed;
+      _connection.Reconnecting += OnConnectionReconnecting;
+      _connection.Reconnected += OnConnectionReconnected;
 
       _connection.On<Dictionary<string, string>>("SystemState", state => { _stateChanged.OnNext(state); });
 
@@ -40,7 +44,7 @@ public class SwitcherClient
    }
 
    public Uri ServerUri => _hubUri;
-   public bool IsConnected => _isConnected;
+   public bool IsConnected => _connection.State == HubConnectionState.Connected;
 
    public static SwitcherClient Instance
    {
@@ -69,13 +73,12 @@ public class SwitcherClient
 
    public async System.Threading.Tasks.Task<bool> ConnectAsync()
    {
-      if (_isConnected)
+      if (IsConnected)
          return true;
 
       try
       {
          await _connection.StartAsync();
-         _isConnected = true;
          
          // Small delay to ensure connection is fully established
          await Task.Delay(100);
@@ -84,39 +87,110 @@ public class SwitcherClient
       }
       catch (System.Net.Http.HttpRequestException)
       {
-         _isConnected = false;
          return false;
       }
       catch (Exception)
       {
-         _isConnected = false;
          return false;
       }
    }
 
    public void SwitchSource(string source, string output)
    {
-      _connection.SendAsync("SwitchSource", source, output);
+      if (!IsConnected)
+      {
+         System.Diagnostics.Debug.WriteLine("Cannot switch source: connection is not active");
+         return;
+      }
+
+      try
+      {
+         _connection.SendAsync("SwitchSource", source, output);
+      }
+      catch (Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"Error sending SwitchSource command: {ex.Message}");
+      }
    }
 
    public void RequestStatus()
    {
-      _connection.SendAsync("GetSystemState");
+      if (!IsConnected)
+      {
+         System.Diagnostics.Debug.WriteLine("Cannot request status: connection is not active");
+         return;
+      }
+
+      try
+      {
+         _connection.SendAsync("GetSystemState");
+      }
+      catch (Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"Error sending GetSystemState command: {ex.Message}");
+      }
    }
 
    public void RequestSettings()
    {
-      // Reset TCS for cases where settings might be requested again
-      if (_settingsTcs.Task.IsCompleted)
+      if (!IsConnected)
       {
-         _settingsTcs = new TaskCompletionSource<AppSettings?>(TaskCreationOptions.RunContinuationsAsynchronously);
+         System.Diagnostics.Debug.WriteLine("Cannot request settings: connection is not active");
+         return;
       }
-      _settings = null; // Clear previous settings before requesting new ones
-      _connection.SendAsync("GetConfiguration");
+
+      try
+      {
+         // Reset TCS for cases where settings might be requested again
+         if (_settingsTcs.Task.IsCompleted)
+         {
+            _settingsTcs = new TaskCompletionSource<AppSettings?>(TaskCreationOptions.RunContinuationsAsynchronously);
+         }
+         _settings = null; // Clear previous settings before requesting new ones
+         _connection.SendAsync("GetConfiguration");
+      }
+      catch (Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"Error sending GetConfiguration command: {ex.Message}");
+         _settingsTcs.TrySetException(ex);
+      }
    }
 
    public Task<AppSettings?> GetSettingsAsync()
    {
       return _settingsTcs.Task;
+   }
+
+   private Task OnConnectionClosed(Exception? exception)
+   {
+      System.Diagnostics.Debug.WriteLine($"Connection closed. Exception: {exception?.Message}");
+      _connectionStateChanged.OnNext(false);
+      return Task.CompletedTask;
+   }
+
+   private Task OnConnectionReconnecting(Exception? exception)
+   {
+      System.Diagnostics.Debug.WriteLine($"Connection reconnecting. Exception: {exception?.Message}");
+      _connectionStateChanged.OnNext(false);
+      return Task.CompletedTask;
+   }
+
+   private Task OnConnectionReconnected(string? connectionId)
+   {
+      System.Diagnostics.Debug.WriteLine($"Connection reconnected. Connection ID: {connectionId}");
+      _connectionStateChanged.OnNext(true);
+      
+      // Re-request settings and status after reconnection
+      try
+      {
+         RequestSettings();
+         RequestStatus();
+      }
+      catch (Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"Error re-requesting data after reconnection: {ex.Message}");
+      }
+      
+      return Task.CompletedTask;
    }
 }

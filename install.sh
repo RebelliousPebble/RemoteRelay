@@ -435,6 +435,9 @@ if [[ "$INSTALL_TYPE" == "C" || "$INSTALL_TYPE" == "B" ]]; then
   SUMMARY_MESSAGE+="  - RemoteRelay Client installed to $CLIENT_INSTALL_DIR, configured with Server Address $SERVER_ADDRESS, and set up for XDG autostart.\\n"
 fi
 
+chown -R "$APP_USER:$APP_USER" "$BASE_INSTALL_DIR"
+
+
 # Completion Message
 echo "----------------------------------------------------"
 echo " RemoteRelay Installation Finished! "

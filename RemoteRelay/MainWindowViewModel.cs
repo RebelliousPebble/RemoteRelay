@@ -47,6 +47,16 @@ public class MainWindowViewModel : ViewModelBase
       var serverUri = new Uri($"http://{serverInfo.Host}:{serverInfo.Port}/relay");
       SwitcherClient.InitializeInstance(serverUri);
 
+      // Subscribe to connection state changes
+      SwitcherClient.Instance._connectionStateChanged.Subscribe(isConnected =>
+      {
+         if (!isConnected)
+         {
+            OperationViewModel = null;
+            StartRetryTimer();
+         }
+      });
+
       _ = InitializeConnectionAsync();
    }
 
