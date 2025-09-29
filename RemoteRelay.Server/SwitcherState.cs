@@ -1,13 +1,15 @@
+using System;
+using System.Collections.Generic;
 using System.Device.Gpio;
-using RemoteRelay.Common;
-using Microsoft.AspNetCore.SignalR; // Added for IHubContext
 using System.Linq; // Added for LINQ methods
+using Microsoft.AspNetCore.SignalR; // Added for IHubContext
+using RemoteRelay.Common;
 
 namespace RemoteRelay.Server;
 
 public class SwitcherState
 {
-   private readonly GpioController _gpiController;
+   private readonly GpioController _gpiController = null!;
    private readonly AppSettings _settings;
    private readonly List<Source> _sources = new();
    private readonly int outputCount;
@@ -20,6 +22,8 @@ public class SwitcherState
 
    public SwitcherState(AppSettings settings, IHubContext<RelayHub> hubContext) // Added hubContext parameter
    {
+      settings.SourceColorPalette = GeneratePalette(settings.Sources);
+
       _settings = settings; // Store settings first
       _hubContext = hubContext; // Store hubContext
 
@@ -42,13 +46,61 @@ public class SwitcherState
 
       outputCount = settings.Outputs.Count;
 
-      // Set default source
-      if (settings.DefaultSource != null)
+      // Set default routes
+      if (settings.DefaultRoutes != null && settings.DefaultRoutes.Count > 0)
+      {
+         Console.WriteLine("Applying default routes from configuration...");
+         var groupedByOutput = settings.DefaultRoutes
+            .Where(route => !string.IsNullOrWhiteSpace(route.Key) && !string.IsNullOrWhiteSpace(route.Value))
+            .GroupBy(route => route.Value, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key,
+               group => group.Select(x => x.Key).ToList(),
+               StringComparer.OrdinalIgnoreCase);
+
+         foreach (var group in groupedByOutput)
+         {
+            if (group.Value.Count > 1)
+            {
+               Console.WriteLine($"Warning: multiple default sources configured for output '{group.Key}'. Only one can be active at startup. Selecting '{group.Value.First()}'.");
+            }
+         }
+
+         foreach (var route in settings.DefaultRoutes)
+         {
+            if (string.IsNullOrWhiteSpace(route.Key) || string.IsNullOrWhiteSpace(route.Value))
+               continue;
+
+            if (groupedByOutput.TryGetValue(route.Value, out var sourcesForOutput)
+                && sourcesForOutput.Count > 1
+                && !string.Equals(sourcesForOutput.First(), route.Key, StringComparison.OrdinalIgnoreCase))
+            {
+               Console.WriteLine($"Skipping default route {route.Key} -> {route.Value} because output already assigned to '{sourcesForOutput.First()}'.");
+               continue;
+            }
+
+            if (!settings.Routes.Any(x => x.SourceName == route.Key && x.OutputName == route.Value))
+            {
+               Console.WriteLine($"Skipping default route {route.Key} -> {route.Value} because it is not defined in routes list.");
+               continue;
+            }
+
+            Console.WriteLine($"Setting default route {route.Key} -> {route.Value}");
+            SwitchSource(route.Key, route.Value);
+         }
+      }
+      else if (!string.IsNullOrWhiteSpace(settings.DefaultSource))
       {
          Console.WriteLine($"Setting default source to: {settings.DefaultSource}");
-         var defaultOutput = settings.Routes.First(x => x.SourceName == settings.DefaultSource).OutputName;
-         Console.WriteLine($"Default output: {defaultOutput}");
-         SwitchSource(settings.DefaultSource, defaultOutput);
+         var defaultRoute = settings.Routes.FirstOrDefault(x => x.SourceName == settings.DefaultSource);
+         if (defaultRoute != null)
+         {
+            Console.WriteLine($"Default output: {defaultRoute.OutputName}");
+            SwitchSource(settings.DefaultSource, defaultRoute.OutputName);
+         }
+         else
+         {
+            Console.WriteLine($"No route found for default source {settings.DefaultSource}. Skipping initial switch.");
+         }
       }
 
       // Initialize Inactive Relay Pin
@@ -192,11 +244,22 @@ public class SwitcherState
             }
       else
          foreach (var x in _sources)
+         {
             if (x._sourceName == source)
             {
                Console.WriteLine($"Enabling output '{output}' for source '{x._sourceName}' (multi-output mode)");
                x.EnableOutput(output);
             }
+            else
+            {
+               var currentRoute = x.GetCurrentRoute();
+               if (!string.IsNullOrEmpty(currentRoute) && string.Equals(currentRoute, output, StringComparison.OrdinalIgnoreCase))
+               {
+                  Console.WriteLine($"Clearing output '{output}' from source '{x._sourceName}' due to reassignment.");
+                  x.DisableOutput();
+               }
+            }
+         }
    }
 
    // first value is index of source, second value is output index (-1 is not outputting)
@@ -223,5 +286,58 @@ public class SwitcherState
    public AppSettings GetSettings()
    {
       return _settings;
+   }
+
+   private static Dictionary<string, string> GeneratePalette(IReadOnlyCollection<string> sources)
+   {
+      var palette = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+      if (sources.Count == 0)
+         return palette;
+
+      var orderedSources = sources.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+
+      for (var index = 0; index < orderedSources.Count; index++)
+      {
+         var hue = 360.0 * index / orderedSources.Count;
+         var colour = FromHsl(hue / 360.0, 0.65, 0.5);
+         palette[orderedSources[index]] = colour;
+      }
+
+      return palette;
+   }
+
+   private static string FromHsl(double h, double s, double l)
+   {
+      double r, g, b;
+
+      if (s.Equals(0))
+      {
+         r = g = b = l;
+      }
+      else
+      {
+         var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+         var p = 2 * l - q;
+         r = HueToRgb(p, q, h + 1.0 / 3);
+         g = HueToRgb(p, q, h);
+         b = HueToRgb(p, q, h - 1.0 / 3);
+      }
+
+   var red = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(r * 255)));
+   var green = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(g * 255)));
+   var blue = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(b * 255)));
+
+      return $"#FF{red:X2}{green:X2}{blue:X2}";
+   }
+
+   private static double HueToRgb(double p, double q, double t)
+   {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+      if (t < 1.0 / 2) return q;
+      if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+      return p;
    }
 }

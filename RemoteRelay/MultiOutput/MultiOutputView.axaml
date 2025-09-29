@@ -2,8 +2,90 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450" Width="800" Height="450" Background="Pink"
-             x:Class="RemoteRelay.MultiOutput.MultiOutputView">
+             xmlns:controls="clr-namespace:RemoteRelay.Controls"
+             xmlns:multiOutput="clr-namespace:RemoteRelay.MultiOutput"
+             mc:Ignorable="d"
+             d:DesignWidth="800"
+             d:DesignHeight="450"
+             Background="Black"
+             x:Class="RemoteRelay.MultiOutput.MultiOutputView"
+             x:DataType="multiOutput:MultiOutputViewModel">
 
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="15*" />
+            <RowDefinition Height="70*" />
+            <RowDefinition Height="15*" />
+        </Grid.RowDefinitions>
+
+        <Viewbox Grid.Row="0" Stretch="Uniform">
+            <Label Content="{Binding StatusMessage}"
+                   HorizontalAlignment="Stretch"
+                   VerticalAlignment="Stretch"
+                   HorizontalContentAlignment="Center"
+                   VerticalContentAlignment="Center"
+                   Padding="20" />
+        </Viewbox>
+
+        <Grid Grid.Row="1" Margin="20,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+
+            <ItemsControl Grid.Column="0"
+                          Grid.Row="0"
+                          ItemsSource="{Binding Inputs}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="2" Rows="3" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemContainerTheme>
+                    <ControlTheme TargetType="ContentPresenter">
+                        <ControlTheme.Setters>
+                            <Setter Property="Margin" Value="10" />
+                        </ControlTheme.Setters>
+                    </ControlTheme>
+                </ItemsControl.ItemContainerTheme>
+            </ItemsControl>
+
+            <ItemsControl Grid.Column="1"
+                          Grid.Row="0"
+                          ItemsSource="{Binding Outputs}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="2" Rows="3" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemContainerTheme>
+                    <ControlTheme TargetType="ContentPresenter">
+                        <ControlTheme.Setters>
+                            <Setter Property="Margin" Value="10" />
+                        </ControlTheme.Setters>
+                    </ControlTheme>
+                </ItemsControl.ItemContainerTheme>
+            </ItemsControl>
+        </Grid>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+
+            <ContentControl Content="{Binding Cancel}"
+                            Grid.Column="0"
+                            Margin="10" />
+
+            <Image Source="{Binding StationLogo}"
+                   Grid.Column="1"
+                   Margin="10"
+                   Stretch="Uniform"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+        </Grid>
+    </Grid>
 
 </UserControl>

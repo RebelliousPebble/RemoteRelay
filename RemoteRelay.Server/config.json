@@ -1,32 +1,74 @@
 {
   "Routes": [
     {
-      "SourceName": "Studio 1",
-      "OutputName": "Newsroom 1",
-      "RelayPin": 26,
+      "SourceName": "Input 1",
+      "OutputName": "Output 1",
+      "RelayPin": 5,
       "ActiveLow": true
     },
     {
-      "SourceName": "Studio 2",
-      "OutputName": "Newsroom 1",
-      "RelayPin": 20,
+      "SourceName": "Input 1",
+      "OutputName": "Output 2",
+      "RelayPin": 6,
       "ActiveLow": true
     },
     {
-      "SourceName": "Automation",
-      "OutputName": "Newsroom 1",
-      "RelayPin": 21,
+      "SourceName": "Input 2",
+      "OutputName": "Output 1",
+      "RelayPin": 7,
+      "ActiveLow": true
+    },
+    {
+      "SourceName": "Input 2",
+      "OutputName": "Output 2",
+      "RelayPin": 8,
+      "ActiveLow": true
+    },
+    {
+      "SourceName": "Input 3",
+      "OutputName": "Output 1",
+      "RelayPin": 9,
+      "ActiveLow": true
+    },
+    {
+      "SourceName": "Input 3",
+      "OutputName": "Output 2",
+      "RelayPin": 10,
+      "ActiveLow": true
+    },
+    {
+      "SourceName": "Input 4",
+      "OutputName": "Output 1",
+      "RelayPin": 11,
+      "ActiveLow": true
+    },
+    {
+      "SourceName": "Input 4",
+      "OutputName": "Output 2",
+      "RelayPin": 12,
       "ActiveLow": true
     }
   ],
-  "DefaultSource": "Studio 1",
+  "DefaultSource": null,
+  "DefaultRoutes": {
+    "Input 1": "Output 1",
+    "Input 2": "Output 2"
+  },
   "PhysicalSourceButtons": {
-    "Studio 1": {
-      "PinNumber": 10,
+    "Input 1": {
+      "PinNumber": 17,
       "TriggerState": "Low"
     },
-    "Studio 2": {
-      "PinNumber": 9,
+    "Input 2": {
+      "PinNumber": 18,
+      "TriggerState": "Low"
+    },
+    "Input 3": {
+      "PinNumber": 19,
+      "TriggerState": "Low"
+    },
+    "Input 4": {
+      "PinNumber": 20,
       "TriggerState": "Low"
     }
   },
@@ -34,7 +76,7 @@
   "TcpMirrorAddress": null,
   "TcpMirrorPort": null,
   "InactiveRelay": {
-    "Pin": 12,
+    "Pin": 25,
     "InactiveState": "High"
   },
   "FlashOnSelect": true,

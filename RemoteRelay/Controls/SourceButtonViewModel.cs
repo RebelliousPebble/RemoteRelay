@@ -12,7 +12,8 @@ namespace RemoteRelay.Controls;
 public class SourceButtonViewModel : ViewModelBase
 {
    private readonly BehaviorSubject<SourceState> _state = new(SourceState.Inactive);
-   private SolidColorBrush _backgroundColor = new(Colors.DarkGray);
+   private SolidColorBrush _backgroundColor = new(Colors.Gray);
+   private Color _linkedColor = Colors.Gray;
 
    public SourceButtonViewModel(string sourceName)
    {
@@ -22,17 +23,18 @@ public class SourceButtonViewModel : ViewModelBase
          ReactiveCommand
             .CreateFromObservable(
                () => Observable.Return(Unit.Default),
-               _state.Select(x => x != SourceState.Active));
+               _state.Select(x => x != SourceState.Selected));
 
       _ = _state
          .Select(state => state switch
          {
             SourceState.Inactive => Colors.Gray,
-            SourceState.Selected => Colors.DeepSkyBlue,
+            SourceState.Selected => Colors.Red,
             SourceState.Active => Colors.Red,
+            SourceState.Linked => _linkedColor,
             _ => Colors.Pink
          })
-         .ObserveOn(SynchronizationContext.Current!)
+         .ObserveOn(RxApp.MainThreadScheduler)
          .Subscribe(x => BackgroundColor = new SolidColorBrush(x));
       ;
    }
@@ -49,8 +51,11 @@ public class SourceButtonViewModel : ViewModelBase
       set => this.RaiseAndSetIfChanged(ref _backgroundColor, value);
    }
    
-   public void SetState(SourceState state)
+   public void SetState(SourceState state, Color? linkedColor = null)
    {
+      if (linkedColor.HasValue)
+         _linkedColor = linkedColor.Value;
+
       Dispatcher.UIThread.Invoke(() => _state.OnNext(state));
    }
 }
@@ -59,5 +64,6 @@ public enum SourceState
 {
    Inactive,
    Selected,
-   Active
+   Active,
+   Linked
 }

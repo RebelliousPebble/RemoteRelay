@@ -61,7 +61,9 @@ public struct AppSettings
     //Sources
     public List<RelayConfig> Routes { get; set; }
     public string? DefaultSource { get; set; }
+    public Dictionary<string, string> DefaultRoutes { get; set; }
     public Dictionary<string, PhysicalButtonConfig> PhysicalSourceButtons { get; set; }
+    public Dictionary<string, string> SourceColorPalette { get; set; }
     // Note: Sources and Outputs are expression-bodied members and don't need initialization here.
 
     //Communication
@@ -80,6 +82,8 @@ public struct AppSettings
     public AppSettings()
     {
         PhysicalSourceButtons = new Dictionary<string, PhysicalButtonConfig>();
+    DefaultRoutes = new Dictionary<string, string>();
+    SourceColorPalette = new Dictionary<string, string>();
         Routes = new List<RelayConfig>();
         LogoFile = string.Empty;
         // DefaultSource, TcpMirrorAddress are nullable strings (default to null)
@@ -89,8 +93,8 @@ public struct AppSettings
         // Sources and Outputs are computed properties.
     }
 
-   public IReadOnlyCollection<string> Sources => Routes.Select(x => x.SourceName).Distinct().ToArray();
-   public IReadOnlyCollection<string> Outputs => Routes.Select(x => x.OutputName).Distinct().ToArray();
+    public IReadOnlyCollection<string> Sources => Routes.Select(x => x.SourceName).Distinct().ToArray();
+    public IReadOnlyCollection<string> Outputs => Routes.Select(x => x.OutputName).Distinct().ToArray();
 
 
    // Properties moved up to group them, constructor added above.

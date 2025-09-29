@@ -131,9 +131,9 @@ public class MainWindowViewModel : ViewModelBase
          ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri}";
          
          // Corrected logic for OperationViewModel initialization using the local 'settings' variable
-         OperationViewModel = settings.Value.Outputs.Count > 1
-             ? new MultiOutputViewModel() // Assuming MultiOutputViewModel takes no params or different ones
-             : new SingleOutputViewModel(settings.Value);
+       OperationViewModel = settings.Value.Outputs.Count > 1
+          ? new MultiOutputViewModel(settings.Value)
+          : new SingleOutputViewModel(settings.Value);
 
          SwitcherClient.Instance.RequestStatus();
       }
