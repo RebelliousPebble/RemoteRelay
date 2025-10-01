@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Reactive.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,6 +32,16 @@ public class MainWindowViewModel : ViewModelBase
       get => _operationViewModel;
       set
       {
+         if (ReferenceEquals(_operationViewModel, value))
+         {
+            return;
+         }
+
+         if (_operationViewModel is IDisposable disposable)
+         {
+            disposable.Dispose();
+         }
+
          this.RaiseAndSetIfChanged(ref _operationViewModel, value);
          this.RaisePropertyChanged(nameof(IsOperationViewReady));
       }
@@ -46,6 +57,14 @@ public class MainWindowViewModel : ViewModelBase
       var serverInfo = JsonSerializer.Deserialize<ServerDetails>(File.ReadAllText("ServerDetails.json"));
       var serverUri = new Uri($"http://{serverInfo.Host}:{serverInfo.Port}/relay");
       SwitcherClient.InitializeInstance(serverUri);
+
+      SwitcherClient.Instance.SettingsUpdates
+         .ObserveOn(RxApp.MainThreadScheduler)
+         .Subscribe(settings =>
+         {
+            ApplySettings(settings);
+            ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri} (settings refreshed at {DateTime.Now:T})";
+         });
 
       // Subscribe to connection state changes
       SwitcherClient.Instance._connectionStateChanged.Subscribe(isConnected =>
@@ -128,12 +147,8 @@ public class MainWindowViewModel : ViewModelBase
 
       if (settings != null)
       {
+         ApplySettings(settings.Value);
          ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri}";
-         
-         // Corrected logic for OperationViewModel initialization using the local 'settings' variable
-       OperationViewModel = settings.Value.Outputs.Count > 1
-          ? new MultiOutputViewModel(settings.Value)
-          : new SingleOutputViewModel(settings.Value);
 
          SwitcherClient.Instance.RequestStatus();
       }
@@ -142,5 +157,12 @@ public class MainWindowViewModel : ViewModelBase
          ServerStatusMessage = "Failed to retrieve valid settings from server.";
          // OperationViewModel can be set to null since it's now nullable
       }
+   }
+
+   private void ApplySettings(AppSettings settings)
+   {
+      OperationViewModel = settings.Outputs.Count > 1
+         ? new MultiOutputViewModel(settings)
+         : new SingleOutputViewModel(settings);
    }
 }

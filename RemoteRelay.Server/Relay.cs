@@ -16,7 +16,7 @@ public class Source
 
    public string _sourceName { get; set; }
 
-   public void AddOutputPin(ref GpioController controller, RelayConfig config)
+   public void AddOutputPin(GpioController controller, RelayConfig config)
    {
       var pin = controller.OpenPin(config.RelayPin, PinMode.Output);
       _relayOutputPins.Add(config.OutputName, (pin, config));

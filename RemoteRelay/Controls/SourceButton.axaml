@@ -16,6 +16,7 @@
     </UserControl.Resources>
 
     <Button Command="{Binding SelectSource}"
+        IsEnabled="{Binding IsEnabled}"
             Background="{Binding BackgroundColor}"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"

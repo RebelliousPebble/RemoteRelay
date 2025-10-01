@@ -42,7 +42,7 @@ public class SingleOutputViewModel : OperationViewModelBase
          .Select(tuple => (tuple.Output, Input: tuple.Input!));
 
       // On selection of an input
-      _ = selected.Subscribe(x =>
+      Disposables.Add(selected.Subscribe(x =>
       {
          x?.SetState(SourceState.Selected);
          if (x is null) return;
@@ -58,15 +58,15 @@ public class SingleOutputViewModel : OperationViewModelBase
                      .Repeat(Math.Max(TimeoutSeconds - 1, 0))
                      .StartWith(Unit.Default),
                   (i, _) => $"Press confirm in the next {i} seconds to switch"));
-      });
+      }));
 
 
       // On selection of an input, disable previous input
-      _ = selected.SkipLast(1).Subscribe(x => { x?.SetState(SourceState.Inactive); });
+      Disposables.Add(selected.SkipLast(1).Subscribe(x => { x?.SetState(SourceState.Inactive); }));
 
 
       // On confirm
-   _ = connection.Subscribe(x =>
+   Disposables.Add(connection.Subscribe(x =>
       {
          RequestCancel();
          
@@ -90,12 +90,12 @@ public class SingleOutputViewModel : OperationViewModelBase
                .Return("No response received from server")
          .Delay(TimeSpan.FromSeconds(TimeoutSeconds))
                .StartWith("Waiting for response from server"));
-      });
+   }));
 
-      _ = selected
-         .DistinctUntilChanged()
-         .Where(x => x == null)
-         .Subscribe(_ => { HandleCancel(); });
+   Disposables.Add(selected
+      .DistinctUntilChanged()
+      .Where(x => x == null)
+      .Subscribe(_ => { HandleCancel(); }));
    }
 
    public IEnumerable<SourceButtonViewModel> Inputs { get; }

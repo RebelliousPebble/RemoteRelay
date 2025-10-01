@@ -6,6 +6,7 @@ using System.Reactive.Linq;
 using Avalonia.Media;
 using RemoteRelay.Common;
 using RemoteRelay.Controls;
+using ReactiveUI;
 
 namespace RemoteRelay.MultiOutput;
 
@@ -45,33 +46,40 @@ public class MultiOutputViewModel : OperationViewModelBase
 				.Publish()
 				.RefCount();
 
-		_ = selectedInputStream
-				.Subscribe(current =>
+	Disposables.Add(selectedInputStream
+		.Subscribe(current =>
+		{
+			if (_activeSelection != null && _activeSelection != current)
 			{
-					if (_activeSelection != null && _activeSelection != current)
-					{
-						RestoreInputState(_activeSelection);
-					}
+				RestoreInputState(_activeSelection);
+			}
 
-					_activeSelection = current;
+			_activeSelection = current;
 
-				if (current != null)
+			if (current != null)
+			{
+				UpdateOutputAvailability(current.SourceName);
+				current.SetState(SourceState.Selected);
+				PushStatusMessage(BuildCountdownMessage(current.SourceName));
+			}
+			else
+			{
+				UpdateOutputAvailability(null);
+				foreach (var input in Inputs)
 				{
-					current.SetState(SourceState.Selected);
-					PushStatusMessage(BuildCountdownMessage(current.SourceName));
+					RestoreInputState(input);
 				}
-					else
-					{
-						foreach (var input in Inputs)
-						{
-							RestoreInputState(input);
-						}
-					}
-			});
+			}
+		}));
 
-					Server._stateChanged
+					Disposables.Add(Server._stateChanged
 						.Take(1)
-						.Subscribe(status => HandleStatusUpdate(status));
+						.Subscribe(status => HandleStatusUpdate(status)));
+
+					if (CurrentStatus.Count > 0)
+					{
+						HandleStatusUpdate(CurrentStatus);
+					}
 
 			var connection = Outputs
 			.Select(vm => vm.Clicked.Select(_ => vm))
@@ -80,7 +88,7 @@ public class MultiOutputViewModel : OperationViewModelBase
 			.Where(tuple => tuple.Input != null)
 				.Select(tuple => (Output: tuple.Output, Input: tuple.Input!));
 
-		_ = connection.Subscribe(tuple =>
+		Disposables.Add(connection.Subscribe(tuple =>
 		{
 			RequestCancel();
 
@@ -102,11 +110,11 @@ public class MultiOutputViewModel : OperationViewModelBase
 					.Return("No response received from server")
 					.Delay(TimeSpan.FromSeconds(TimeoutSeconds))
 					.StartWith($"Waiting for {outputName} confirmation..."));
-		});
+		}));
 
-		_ = selectedInputStream
+		Disposables.Add(selectedInputStream
 			.Where(vm => vm == null)
-			.Subscribe(_ => HandleCancel());
+			.Subscribe(_ => HandleCancel()));
 	}
 
 	public IReadOnlyList<SourceButtonViewModel> Inputs { get; }
@@ -123,8 +131,12 @@ public class MultiOutputViewModel : OperationViewModelBase
 				input.SetState(SourceState.Inactive);
 
 			foreach (var output in Outputs)
+			{
 				output.SetState(SourceState.Inactive);
+				output.IsEnabled = true;
+			}
 
+			UpdateOutputAvailability(null);
 			PushStatusMessage(string.Empty);
 			return;
 		}
@@ -157,12 +169,16 @@ public class MultiOutputViewModel : OperationViewModelBase
 			{
 				var colour = ResolveColour(sourceName);
 				output.SetState(SourceState.Linked, colour);
+					output.IsEnabled = true;
 			}
 			else
 			{
 				output.SetState(SourceState.Inactive);
+					output.IsEnabled = true;
 			}
 		}
+
+			UpdateOutputAvailability(_activeSelection?.SourceName);
 
 		var statusMessages = newStatus
 			.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
@@ -190,6 +206,28 @@ public class MultiOutputViewModel : OperationViewModelBase
 			input.SetState(SourceState.Inactive);
 		}
 	}
+
+		private void UpdateOutputAvailability(string? selectedSource)
+		{
+			if (string.IsNullOrWhiteSpace(selectedSource))
+			{
+				foreach (var output in Outputs)
+				{
+					output.IsEnabled = true;
+				}
+				return;
+			}
+
+			var availableOutputs = Settings.Routes
+				.Where(route => string.Equals(route.SourceName, selectedSource, StringComparison.OrdinalIgnoreCase))
+				.Select(route => route.OutputName)
+				.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+			foreach (var output in Outputs)
+			{
+				output.IsEnabled = availableOutputs.Contains(output.SourceName);
+			}
+		}
 
 	private Dictionary<string, Color> BuildPalette(AppSettings settings)
 	{

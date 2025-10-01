@@ -14,16 +14,22 @@ public class SourceButtonViewModel : ViewModelBase
    private readonly BehaviorSubject<SourceState> _state = new(SourceState.Inactive);
    private SolidColorBrush _backgroundColor = new(Colors.Gray);
    private Color _linkedColor = Colors.Gray;
+   private bool _isEnabled = true;
 
    public SourceButtonViewModel(string sourceName)
    {
       SourceName = sourceName;
 
+      var canExecute = _state
+         .Select(state => state != SourceState.Selected)
+         .CombineLatest(this.WhenAnyValue(vm => vm.IsEnabled), (stateAvailable, enabled) => stateAvailable && enabled)
+         .DistinctUntilChanged();
+
       SelectSource =
          ReactiveCommand
             .CreateFromObservable(
                () => Observable.Return(Unit.Default),
-               _state.Select(x => x != SourceState.Selected));
+               canExecute);
 
       _ = _state
          .Select(state => state switch
@@ -49,6 +55,12 @@ public class SourceButtonViewModel : ViewModelBase
    {
       get => _backgroundColor;
       set => this.RaiseAndSetIfChanged(ref _backgroundColor, value);
+   }
+
+   public bool IsEnabled
+   {
+      get => _isEnabled;
+      set => this.RaiseAndSetIfChanged(ref _isEnabled, value);
    }
    
    public void SetState(SourceState state, Color? linkedColor = null)

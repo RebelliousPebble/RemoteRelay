@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading.Tasks; // Added for TaskCompletionSource
 using Microsoft.AspNetCore.SignalR.Client;
@@ -15,6 +16,7 @@ public class SwitcherClient
    private AppSettings? _settings;
    private Uri _hubUri;
    private TaskCompletionSource<AppSettings?> _settingsTcs;
+   private readonly ReplaySubject<AppSettings> _settingsChanged = new(1);
 
    public Subject<Dictionary<string, string>> _stateChanged = new();
    public Subject<bool> _connectionStateChanged = new();
@@ -40,6 +42,7 @@ public class SwitcherClient
       {
          _settings = settings;
          _settingsTcs.TrySetResult(settings); // Complete the TCS with the received settings
+         _settingsChanged.OnNext(settings);
       });
    }
 
@@ -60,6 +63,8 @@ public class SwitcherClient
    {
       get => _settings;
    }
+
+   public IObservable<AppSettings> SettingsUpdates => _settingsChanged.AsObservable();
 
    public static void InitializeInstance(Uri hubUri)
    {

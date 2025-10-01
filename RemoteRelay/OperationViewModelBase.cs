@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Reactive;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading.Tasks;
@@ -15,10 +16,11 @@ using RemoteRelay.Controls;
 
 namespace RemoteRelay;
 
-public abstract class OperationViewModelBase : ViewModelBase
+public abstract class OperationViewModelBase : ViewModelBase, IDisposable
 {
    private readonly Subject<Unit> _cancelRequests = new();
    private readonly Subject<IObservable<string>> _messageQueue = new();
+   private readonly CompositeDisposable _disposables = new();
 
    private Bitmap? _stationLogo;
    private string _statusMessage = string.Empty;
@@ -29,16 +31,18 @@ public abstract class OperationViewModelBase : ViewModelBase
       TimeoutSeconds = timeoutSeconds;
       Cancel = new SourceButtonViewModel("Cancel");
 
-      Cancel.Clicked.Subscribe(_ => _cancelRequests.OnNext(Unit.Default));
+      Cancel.Clicked.Subscribe(_ => _cancelRequests.OnNext(Unit.Default)).DisposeWith(_disposables);
 
       _messageQueue
          .Switch()
          .ObserveOn(RxApp.MainThreadScheduler)
-         .Subscribe(message => StatusMessage = message);
+         .Subscribe(message => StatusMessage = message)
+         .DisposeWith(_disposables);
 
       _cancelRequests
          .ObserveOn(RxApp.MainThreadScheduler)
-         .Subscribe(_ => HandleCancel());
+         .Subscribe(_ => HandleCancel())
+         .DisposeWith(_disposables);
 
       SwitcherClient.Instance._stateChanged
          .ObserveOn(RxApp.MainThreadScheduler)
@@ -46,7 +50,22 @@ public abstract class OperationViewModelBase : ViewModelBase
          {
             CurrentStatus = status;
             HandleStatusUpdate(status);
-         });
+         })
+         .DisposeWith(_disposables);
+
+      SwitcherClient.Instance._connectionStateChanged
+         .Where(isConnected => isConnected)
+         .ObserveOn(RxApp.MainThreadScheduler)
+         .Subscribe(_ =>
+         {
+            SwitcherClient.Instance.RequestStatus();
+         })
+         .DisposeWith(_disposables);
+
+      if (SwitcherClient.Instance.IsConnected)
+      {
+         SwitcherClient.Instance.RequestStatus();
+      }
 
       _ = LoadStationLogoAsync();
    }
@@ -59,6 +78,8 @@ public abstract class OperationViewModelBase : ViewModelBase
    protected SwitcherClient Server => SwitcherClient.Instance;
 
    protected int TimeoutSeconds { get; }
+
+   protected CompositeDisposable Disposables => _disposables;
 
    public SourceButtonViewModel Cancel { get; }
 
@@ -136,5 +157,10 @@ public abstract class OperationViewModelBase : ViewModelBase
          Debug.WriteLine($"An unexpected error occurred while loading station logo: {ex.Message}");
       StationLogo = null;
       }
+   }
+
+   public void Dispose()
+   {
+      _disposables.Dispose();
    }
 }

@@ -1,9 +1,14 @@
-using System.Text.Json;
-using Microsoft.AspNetCore.Http;
+using System;
 using System.IO;
-using RemoteRelay.Common;
-using System.Device.Gpio; // Added for GpioController and PinValue
+using System.Text.Json;
+using System.Threading;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR; // Added for IHubContext
+using Microsoft.Extensions.Logging;
+using System.Device.Gpio;
+using RemoteRelay.Common;
+using RemoteRelay.Server.Configuration;
+using RemoteRelay.Server.Services;
 
 namespace RemoteRelay.Server;
 
@@ -48,25 +53,25 @@ public class Program
             }
 
             if (IsGpiEnvironment())
-               gpioController = new GpioController(PinNumberingScheme.Logical);
+               gpioController = new GpioController();
             else
-               gpioController = new GpioController(PinNumberingScheme.Board, new MockGpioDriver()); // Matched SwitcherState
+               gpioController = new GpioController(new MockGpioDriver()); // Matched SwitcherState
 
-            if (!gpioController.IsPinOpen(pin))
+            if (!gpioController!.IsPinOpen(pin))
             {
-               gpioController.OpenPin(pin, PinMode.Output);
+               gpioController!.OpenPin(pin, PinMode.Output);
             }
             else
             {
-               var currentPinMode = gpioController.GetPinMode(pin);
+               var currentPinMode = gpioController!.GetPinMode(pin);
                if (currentPinMode != PinMode.Output)
                {
                   Console.WriteLine($"Warning: Pin {pin} was already open with mode {currentPinMode}. Setting to Output mode.");
-                  gpioController.SetPinMode(pin, PinMode.Output);
+                  gpioController!.SetPinMode(pin, PinMode.Output);
                }
             }
 
-            gpioController.Write(pin, valueToSet);
+            gpioController!.Write(pin, valueToSet);
             Console.WriteLine($"Successfully set pin {pin} to {valueToSet}");
             Environment.Exit(0);
          }
@@ -83,12 +88,26 @@ public class Program
       }
 
       // --- Existing Web Server Startup Code ---
-      var _settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText("config.json"));
+      var configPath = Path.Combine(AppContext.BaseDirectory, "config.json");
+      var initialSettings = LoadInitialSettings(configPath);
 
       var builder = WebApplication.CreateBuilder(args);
       builder.Services.AddSignalR();
-      builder.Services.AddSingleton<SwitcherState>(sp => new SwitcherState(_settings, sp.GetRequiredService<Microsoft.AspNetCore.SignalR.IHubContext<RelayHub>>()));
-      builder.WebHost.ConfigureKestrel(options => { options.ListenAnyIP(_settings.ServerPort); });
+      builder.Services.AddSingleton<SwitcherState>(sp =>
+      {
+         var hubContext = sp.GetRequiredService<IHubContext<RelayHub>>();
+         var logger = sp.GetRequiredService<ILogger<SwitcherState>>();
+         return new SwitcherState(initialSettings, hubContext, logger);
+      });
+      builder.Services.AddSingleton(sp =>
+      {
+         var switcherState = sp.GetRequiredService<SwitcherState>();
+         var logger = sp.GetRequiredService<ILogger<ConfigurationWatcher>>();
+         return new ConfigurationWatcher(configPath, switcherState, logger);
+      });
+      builder.Services.AddHostedService(sp => sp.GetRequiredService<ConfigurationWatcher>());
+
+      builder.WebHost.ConfigureKestrel(options => { options.ListenAnyIP(initialSettings.ServerPort); });
 
       var app = builder.Build();
 
@@ -107,7 +126,7 @@ public class Program
           // Assuming GpioController is disposed of when SwitcherState is disposed or app shuts down.
       });
 
-      app.MapGet("/logo", async (SwitcherState switcherState, ILogger<Program> logger, IWebHostEnvironment env) =>
+      app.MapGet("/logo", async (SwitcherState switcherState, ILogger<Program> logger, IWebHostEnvironment env, CancellationToken cancellationToken) =>
       {
          var appSettings = switcherState.GetSettings();
          if (string.IsNullOrWhiteSpace(appSettings.LogoFile))
@@ -130,9 +149,9 @@ public class Program
 
          try
          {
-            var fileBytes = await File.ReadAllBytesAsync(logoPath);
-            logger.LogInformation($"Successfully served logo file: {logoPath}");
-            return Results.File(fileBytes, "image/jpeg"); // Assuming JPEG
+            var (data, contentType) = await ImageCompressor.LoadAndCompressAsync(logoPath, cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("Successfully served compressed logo file: {LogoPath} (content-type: {ContentType})", logoPath, contentType);
+            return Results.File(data, contentType);
          }
          catch (Exception ex)
          {
@@ -142,5 +161,33 @@ public class Program
       });
 
       app.Run();
+   }
+
+   private static AppSettings LoadInitialSettings(string configPath)
+   {
+      if (!File.Exists(configPath))
+      {
+         throw new FileNotFoundException($"Configuration file not found at '{configPath}'.", configPath);
+      }
+
+      var json = File.ReadAllText(configPath);
+      var settings = JsonSerializer.Deserialize<AppSettings>(json, new JsonSerializerOptions
+      {
+         PropertyNameCaseInsensitive = true,
+         ReadCommentHandling = JsonCommentHandling.Skip,
+         AllowTrailingCommas = true
+      });
+
+      if (settings.Routes == null)
+      {
+         throw new InvalidOperationException("Unable to deserialize configuration file into AppSettings.");
+      }
+
+      if (!AppSettingsValidator.TryValidate(settings, out var summary))
+      {
+         throw new InvalidOperationException(summary);
+      }
+
+      return settings;
    }
 }

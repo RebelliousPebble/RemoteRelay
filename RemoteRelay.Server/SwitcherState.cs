@@ -1,56 +1,178 @@
 using System;
 using System.Collections.Generic;
 using System.Device.Gpio;
-using System.Linq; // Added for LINQ methods
-using Microsoft.AspNetCore.SignalR; // Added for IHubContext
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 using RemoteRelay.Common;
 
 namespace RemoteRelay.Server;
 
-public class SwitcherState
+public class SwitcherState : IDisposable
 {
-   private readonly GpioController _gpiController = null!;
-   private readonly AppSettings _settings;
-   private readonly List<Source> _sources = new();
-   private readonly int outputCount;
-   private GpioPin? _inactiveRelayPin;
-   private readonly IHubContext<RelayHub> _hubContext; // Added field
-
-   // Debouncing for physical buttons
+   private readonly IHubContext<RelayHub> _hubContext;
+   private readonly ILogger<SwitcherState> _logger;
    private readonly Dictionary<int, DateTime> _lastPinEventTime = new();
+   private readonly object _stateLock = new();
    private static readonly TimeSpan _debounceTime = TimeSpan.FromMilliseconds(200);
 
-   public SwitcherState(AppSettings settings, IHubContext<RelayHub> hubContext) // Added hubContext parameter
+   private GpioController? _gpiController;
+   private AppSettings _settings;
+   private List<Source> _sources = new();
+   private int _outputCount;
+   private GpioPin? _inactiveRelayPin;
+
+   public SwitcherState(AppSettings settings, IHubContext<RelayHub> hubContext, ILogger<SwitcherState> logger)
+   {
+      _hubContext = hubContext;
+      _logger = logger;
+      InitializeState(settings);
+   }
+
+   public AppSettings GetSettings()
+   {
+      lock (_stateLock)
+      {
+         return _settings;
+      }
+   }
+
+   public Dictionary<string, string> GetSystemState()
+   {
+      lock (_stateLock)
+      {
+         return GetSystemStateInternal();
+      }
+   }
+
+   public async Task ApplySettingsAsync(AppSettings newSettings, CancellationToken cancellationToken = default)
+   {
+      Dictionary<string, string> stateSnapshot;
+      lock (_stateLock)
+      {
+         SetInactiveRelayToInactiveStateInternal();
+         CleanupController();
+         InitializeStateInternal(newSettings);
+         stateSnapshot = GetSystemStateInternal();
+      }
+
+      try
+      {
+         await _hubContext.Clients.All.SendAsync("Configuration", _settings, cancellationToken).ConfigureAwait(false);
+         await _hubContext.Clients.All.SendAsync("SystemState", stateSnapshot, cancellationToken).ConfigureAwait(false);
+      }
+      catch (Exception ex)
+      {
+         _logger.LogError(ex, "Failed to broadcast configuration update.");
+      }
+   }
+
+   public void SwitchSource(string source, string output)
+   {
+      lock (_stateLock)
+      {
+         Console.WriteLine($"SwitchSource called: source='{source}', output='{output}', outputCount={_outputCount}");
+
+         if (_outputCount == 1)
+         {
+            foreach (var x in _sources)
+            {
+               if (x._sourceName == source)
+               {
+                  Console.WriteLine($"Enabling output '{output}' for source '{x._sourceName}'");
+                  x.EnableOutput(output);
+               }
+               else
+               {
+                  Console.WriteLine($"Disabling outputs for source '{x._sourceName}'");
+                  x.DisableOutput();
+               }
+            }
+         }
+         else
+         {
+            foreach (var x in _sources)
+            {
+               if (x._sourceName == source)
+               {
+                  Console.WriteLine($"Enabling output '{output}' for source '{x._sourceName}' (multi-output mode)");
+                  x.EnableOutput(output);
+               }
+               else
+               {
+                  var currentRoute = x.GetCurrentRoute();
+                  if (!string.IsNullOrEmpty(currentRoute) && string.Equals(currentRoute, output, StringComparison.OrdinalIgnoreCase))
+                  {
+                     Console.WriteLine($"Clearing output '{output}' from source '{x._sourceName}' due to reassignment.");
+                     x.DisableOutput();
+                  }
+               }
+            }
+         }
+      }
+   }
+
+   public void SetInactiveRelayToInactiveState()
+   {
+      lock (_stateLock)
+      {
+         SetInactiveRelayToInactiveStateInternal();
+      }
+   }
+
+   public void Dispose()
+   {
+      lock (_stateLock)
+      {
+         CleanupController();
+      }
+   }
+
+   private void InitializeState(AppSettings settings)
+   {
+      lock (_stateLock)
+      {
+         InitializeStateInternal(settings);
+      }
+   }
+
+   private void InitializeStateInternal(AppSettings settings)
    {
       settings.SourceColorPalette = GeneratePalette(settings.Sources);
+      _settings = settings;
 
-      _settings = settings; // Store settings first
-      _hubContext = hubContext; // Store hubContext
+      _gpiController = IsGpiEnvironment()
+         ? new GpioController()
+         : new GpioController(new MockGpioDriver());
 
-      if (IsGpiEnvironment())
-         _gpiController = new GpioController(PinNumberingScheme.Logical);
-      else
-         _gpiController = new GpioController(PinNumberingScheme.Board, new MockGpioDriver());
+      _sources = new List<Source>();
 
-      foreach (var source in settings.Sources)
+      foreach (var source in _settings.Sources)
       {
          var newSource = new Source(source);
-         foreach (var outputName in
-                  settings.Routes.Where(x => x.SourceName == source).Select(x => x.OutputName).Distinct())
+         foreach (var outputName in _settings.Routes.Where(x => x.SourceName == source).Select(x => x.OutputName).Distinct())
          {
-            var relayConfig = settings.Routes.First(x => x.SourceName == source && x.OutputName == outputName);
-            newSource.AddOutputPin(ref _gpiController, relayConfig);
+            var relayConfig = _settings.Routes.First(x => x.SourceName == source && x.OutputName == outputName);
+            newSource.AddOutputPin(_gpiController, relayConfig);
          }
          _sources.Add(newSource);
       }
 
-      outputCount = settings.Outputs.Count;
+      _outputCount = _settings.Outputs.Count;
 
-      // Set default routes
-      if (settings.DefaultRoutes != null && settings.DefaultRoutes.Count > 0)
+      ApplyDefaultRoutes();
+      InitializeInactiveRelayPin();
+      SetupPhysicalButtons();
+   }
+
+   private void ApplyDefaultRoutes()
+   {
+      if (_settings.DefaultRoutes != null && _settings.DefaultRoutes.Count > 0)
       {
          Console.WriteLine("Applying default routes from configuration...");
-         var groupedByOutput = settings.DefaultRoutes
+         var groupedByOutput = _settings.DefaultRoutes
             .Where(route => !string.IsNullOrWhiteSpace(route.Key) && !string.IsNullOrWhiteSpace(route.Value))
             .GroupBy(route => route.Value, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key,
@@ -65,7 +187,7 @@ public class SwitcherState
             }
          }
 
-         foreach (var route in settings.DefaultRoutes)
+         foreach (var route in _settings.DefaultRoutes)
          {
             if (string.IsNullOrWhiteSpace(route.Key) || string.IsNullOrWhiteSpace(route.Value))
                continue;
@@ -78,7 +200,7 @@ public class SwitcherState
                continue;
             }
 
-            if (!settings.Routes.Any(x => x.SourceName == route.Key && x.OutputName == route.Value))
+            if (!_settings.Routes.Any(x => x.SourceName == route.Key && x.OutputName == route.Value))
             {
                Console.WriteLine($"Skipping default route {route.Key} -> {route.Value} because it is not defined in routes list.");
                continue;
@@ -88,65 +210,85 @@ public class SwitcherState
             SwitchSource(route.Key, route.Value);
          }
       }
-      else if (!string.IsNullOrWhiteSpace(settings.DefaultSource))
+      else if (!string.IsNullOrWhiteSpace(_settings.DefaultSource))
       {
-         Console.WriteLine($"Setting default source to: {settings.DefaultSource}");
-         var defaultRoute = settings.Routes.FirstOrDefault(x => x.SourceName == settings.DefaultSource);
+         Console.WriteLine($"Setting default source to: {_settings.DefaultSource}");
+         var defaultRoute = _settings.Routes.FirstOrDefault(x => x.SourceName == _settings.DefaultSource);
          if (defaultRoute != null)
          {
             Console.WriteLine($"Default output: {defaultRoute.OutputName}");
-            SwitchSource(settings.DefaultSource, defaultRoute.OutputName);
+            SwitchSource(_settings.DefaultSource, defaultRoute.OutputName);
          }
          else
          {
-            Console.WriteLine($"No route found for default source {settings.DefaultSource}. Skipping initial switch.");
+            Console.WriteLine($"No route found for default source {_settings.DefaultSource}. Skipping initial switch.");
          }
       }
+   }
 
-      // Initialize Inactive Relay Pin
-      if (_settings.InactiveRelay != null && _settings.InactiveRelay.Pin > 0)
+   private void InitializeInactiveRelayPin()
+   {
+      _inactiveRelayPin = null;
+
+      if (_settings.InactiveRelay == null || _settings.InactiveRelay.Pin <= 0 || _gpiController == null)
       {
+         return;
+      }
+
+      try
+      {
+         _inactiveRelayPin = _gpiController.OpenPin(_settings.InactiveRelay.Pin, PinMode.Output);
+         _inactiveRelayPin.Write(_settings.InactiveRelay.GetActivePinValue());
+         Console.WriteLine($"Inactive relay pin {_settings.InactiveRelay.Pin} initialized to active state ({_settings.InactiveRelay.GetActivePinValue()}).");
+      }
+      catch (Exception ex)
+      {
+         Console.WriteLine($"Error initializing inactive relay pin {_settings.InactiveRelay.Pin}: {ex.Message}");
+         _inactiveRelayPin = null;
+      }
+   }
+
+   private void SetupPhysicalButtons()
+   {
+      _lastPinEventTime.Clear();
+
+      if (_settings.PhysicalSourceButtons == null || _gpiController == null)
+      {
+         return;
+      }
+
+      foreach (var buttonEntry in _settings.PhysicalSourceButtons)
+      {
+         var sourceNameForButton = buttonEntry.Key;
+         var buttonConfig = buttonEntry.Value;
+
+         if (buttonConfig.PinNumber <= 0)
+         {
+            Console.WriteLine($"Skipping physical button for source '{sourceNameForButton}' due to invalid pin number: {buttonConfig.PinNumber}");
+            continue;
+         }
+
+         Console.WriteLine($"Setting up physical button for source '{sourceNameForButton}' on pin {buttonConfig.PinNumber} with trigger state {buttonConfig.TriggerState}");
          try
          {
-            _inactiveRelayPin = _gpiController.OpenPin(_settings.InactiveRelay.Pin, PinMode.Output);
-            _inactiveRelayPin.Write(_settings.InactiveRelay.GetActivePinValue());
-            Console.WriteLine($"Inactive relay pin {_settings.InactiveRelay.Pin} initialized to active state ({_settings.InactiveRelay.GetActivePinValue()}).");
+            if (!_gpiController.IsPinOpen(buttonConfig.PinNumber))
+            {
+               _gpiController.OpenPin(buttonConfig.PinNumber, PinMode.InputPullUp);
+            }
+            else
+            {
+               _gpiController.SetPinMode(buttonConfig.PinNumber, PinMode.InputPullUp);
+            }
+
+            _gpiController.RegisterCallbackForPinValueChangedEvent(
+               buttonConfig.PinNumber,
+               buttonConfig.GetTriggerEventType(),
+               HandlePhysicalButtonChangeEvent);
+            Console.WriteLine($"Successfully registered callback for pin {buttonConfig.PinNumber} for source '{sourceNameForButton}'.");
          }
          catch (Exception ex)
          {
-            Console.WriteLine($"Error initializing inactive relay pin {_settings.InactiveRelay.Pin}: {ex.Message}");
-            _inactiveRelayPin = null; // Ensure it's null if setup failed
-         }
-      }
-
-      // Setup physical buttons
-      if (_settings.PhysicalSourceButtons != null && _gpiController != null)
-      {
-         foreach (var buttonEntry in _settings.PhysicalSourceButtons)
-         {
-            var sourceNameForButton = buttonEntry.Key;
-            var buttonConfig = buttonEntry.Value;
-
-            if (buttonConfig.PinNumber <= 0)
-            {
-               Console.WriteLine($"Skipping physical button for source '{sourceNameForButton}' due to invalid pin number: {buttonConfig.PinNumber}");
-               continue;
-            }
-
-            Console.WriteLine($"Setting up physical button for source '{sourceNameForButton}' on pin {buttonConfig.PinNumber} with trigger state {buttonConfig.TriggerState}");
-            try
-            {
-               _gpiController.OpenPin(buttonConfig.PinNumber, PinMode.InputPullUp);
-               _gpiController.RegisterCallbackForPinValueChangedEvent(
-                  buttonConfig.PinNumber,
-                  buttonConfig.GetTriggerEventType(),
-                  HandlePhysicalButtonChangeEvent);
-               Console.WriteLine($"Successfully registered callback for pin {buttonConfig.PinNumber} for source '{sourceNameForButton}'.");
-            }
-            catch (Exception ex)
-            {
-               Console.WriteLine($"Error setting up physical button for source '{sourceNameForButton}' on pin {buttonConfig.PinNumber}: {ex.Message}");
-            }
+            Console.WriteLine($"Error setting up physical button for source '{sourceNameForButton}' on pin {buttonConfig.PinNumber}: {ex.Message}");
          }
       }
    }
@@ -166,10 +308,14 @@ public class SwitcherState
 
       Console.WriteLine($"Pin change event: Pin {e.PinNumber}, Type {e.ChangeType} (debounced)");
 
-      var matchedButtonEntry = _settings.PhysicalSourceButtons
-                                     .FirstOrDefault(b => b.Value.PinNumber == e.PinNumber);
+      KeyValuePair<string, PhysicalButtonConfig> matchedButtonEntry;
+      lock (_stateLock)
+      {
+         matchedButtonEntry = _settings.PhysicalSourceButtons
+            .FirstOrDefault(b => b.Value.PinNumber == e.PinNumber);
+      }
 
-      if (matchedButtonEntry.Key == null) // KeyValuePair is a struct, so Key will be null if not found by FirstOrDefault
+      if (matchedButtonEntry.Key == null)
       {
          Console.WriteLine($"Error: No configured button found for pin {e.PinNumber}.");
          return;
@@ -182,26 +328,22 @@ public class SwitcherState
       {
          Console.WriteLine($"Physical button pressed for source '{sourceName}' on pin {e.PinNumber}.");
 
-         var route = _settings.Routes.FirstOrDefault(r => r.SourceName == sourceName);
-         if (route == null)
+         string? targetOutputName;
+         lock (_stateLock)
+         {
+            targetOutputName = _settings.Routes.FirstOrDefault(r => r.SourceName == sourceName)?.OutputName;
+         }
+
+         if (targetOutputName == null)
          {
             Console.WriteLine($"Error: No route found for source '{sourceName}' triggered by pin {e.PinNumber}.");
             return;
          }
-         var targetOutputName = route.OutputName;
 
          SwitchSource(sourceName, targetOutputName);
          Console.WriteLine($"Switched to source '{sourceName}' output '{targetOutputName}' due to physical button press on pin {e.PinNumber}.");
 
-         try
-         {
-            _hubContext.Clients.All.SendAsync("SystemState", GetSystemState()).Wait();
-            Console.WriteLine($"Sent SystemState update to clients after physical button press for pin {e.PinNumber}.");
-         }
-         catch (Exception ex)
-         {
-            Console.WriteLine($"Error sending SystemState update after physical button press for pin {e.PinNumber}: {ex.Message}");
-         }
+         var _ = _hubContext.Clients.All.SendAsync("SystemState", GetSystemState());
       }
       else
       {
@@ -209,7 +351,21 @@ public class SwitcherState
       }
    }
 
-   public void SetInactiveRelayToInactiveState()
+   private Dictionary<string, string> GetSystemStateInternal()
+   {
+      var state = new Dictionary<string, string>();
+      foreach (var x in _sources)
+      {
+         var currentRoute = x.GetCurrentRoute();
+         state.Add(x._sourceName, currentRoute);
+         Console.WriteLine($"Source '{x._sourceName}' current route: '{currentRoute}'");
+      }
+
+      Console.WriteLine($"System state: {string.Join(", ", state.Select(kvp => $"{kvp.Key}='{kvp.Value}'"))}");
+      return state;
+   }
+
+   private void SetInactiveRelayToInactiveStateInternal()
    {
       if (_inactiveRelayPin != null && _settings.InactiveRelay != null)
       {
@@ -226,66 +382,65 @@ public class SwitcherState
       }
    }
 
-   public void SwitchSource(string source, string output)
+   private void CleanupController()
    {
-      Console.WriteLine($"SwitchSource called: source='{source}', output='{output}', outputCount={outputCount}");
-      
-      if (outputCount == 1)
-         foreach (var x in _sources)
-            if (x._sourceName == source)
-            {
-               Console.WriteLine($"Enabling output '{output}' for source '{x._sourceName}'");
-               x.EnableOutput(output);
-            }
-            else
-            {
-               Console.WriteLine($"Disabling outputs for source '{x._sourceName}'");
-               x.DisableOutput();
-            }
-      else
-         foreach (var x in _sources)
+      if (_inactiveRelayPin != null)
+      {
+         try
          {
-            if (x._sourceName == source)
+            _inactiveRelayPin.Dispose();
+         }
+         catch (Exception ex)
+         {
+            _logger.LogWarning(ex, "Error disposing inactive relay pin");
+         }
+         finally
+         {
+            _inactiveRelayPin = null;
+         }
+      }
+
+      foreach (var buttonEntry in _settings.PhysicalSourceButtons ?? new Dictionary<string, PhysicalButtonConfig>())
+      {
+         try
+         {
+            if (_gpiController?.IsPinOpen(buttonEntry.Value.PinNumber) == true)
             {
-               Console.WriteLine($"Enabling output '{output}' for source '{x._sourceName}' (multi-output mode)");
-               x.EnableOutput(output);
-            }
-            else
-            {
-               var currentRoute = x.GetCurrentRoute();
-               if (!string.IsNullOrEmpty(currentRoute) && string.Equals(currentRoute, output, StringComparison.OrdinalIgnoreCase))
-               {
-                  Console.WriteLine($"Clearing output '{output}' from source '{x._sourceName}' due to reassignment.");
-                  x.DisableOutput();
-               }
+               _gpiController.UnregisterCallbackForPinValueChangedEvent(
+                  buttonEntry.Value.PinNumber,
+                  HandlePhysicalButtonChangeEvent);
+               _gpiController.ClosePin(buttonEntry.Value.PinNumber);
             }
          }
-   }
-
-   // first value is index of source, second value is output index (-1 is not outputting)
-   public Dictionary<string, string> GetSystemState()
-   {
-      var state = new Dictionary<string, string>();
-      foreach (var x in _sources) 
-      {
-         var currentRoute = x.GetCurrentRoute();
-         state.Add(x._sourceName, currentRoute);
-         Console.WriteLine($"Source '{x._sourceName}' current route: '{currentRoute}'");
+         catch
+         {
+            // Ignore cleanup errors for buttons
+         }
       }
-      
-      Console.WriteLine($"System state: {string.Join(", ", state.Select(kvp => $"{kvp.Key}='{kvp.Value}'"))}");
-      return state;
+
+      _sources.Clear();
+      _lastPinEventTime.Clear();
+
+      if (_gpiController != null)
+      {
+         try
+         {
+            _gpiController.Dispose();
+         }
+         catch (Exception ex)
+         {
+            _logger.LogWarning(ex, "Error disposing GPIO controller");
+         }
+         finally
+         {
+            _gpiController = null;
+         }
+      }
    }
 
    private bool IsGpiEnvironment()
    {
-      // Check if we are running on a Raspberry Pi or other unix-like environment
       return Environment.OSVersion.Platform == PlatformID.Unix;
-   }
-
-   public AppSettings GetSettings()
-   {
-      return _settings;
    }
 
    private static Dictionary<string, string> GeneratePalette(IReadOnlyCollection<string> sources)
@@ -324,9 +479,9 @@ public class SwitcherState
          b = HueToRgb(p, q, h - 1.0 / 3);
       }
 
-   var red = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(r * 255)));
-   var green = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(g * 255)));
-   var blue = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(b * 255)));
+      var red = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(r * 255)));
+      var green = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(g * 255)));
+      var blue = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(b * 255)));
 
       return $"#FF{red:X2}{green:X2}{blue:X2}";
    }
