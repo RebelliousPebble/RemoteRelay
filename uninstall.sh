@@ -1,297 +1,255 @@
 #!/bin/bash
 
-# RemoteRelay Uninstall Script
-# This script removes RemoteRelay Server and/or Client installations
+set -euo pipefail
 
-# Determine user's home directory
-# Use SUDO_USER if set (script run with sudo), otherwise current user
-APP_USER="${SUDO_USER:-$(whoami)}"
-USER_HOME=$(eval echo ~$APP_USER)
+SERVER_SERVICE_NAME="remote-relay-server.service"
+SERVER_SERVICE_FILE="/etc/systemd/system/$SERVER_SERVICE_NAME"
 
-if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
-  echo "Error: Could not determine user's home directory. Exiting."
-  exit 1
+if [ "$EUID" -eq 0 ]; then
+    APP_USER="${SUDO_USER:-}"
+    if [ -z "$APP_USER" ] || [ "$APP_USER" = "root" ]; then
+        echo "Error: When running as root, sudo must preserve the invoking user (SUDO_USER)." >&2
+        echo "Re-run using: sudo -E ./uninstall.sh" >&2
+        exit 1
+    fi
+else
+    APP_USER="$(whoami)"
 fi
 
-# Define installation directories
-BASE_INSTALL_DIR="$USER_HOME/.local/share/RemoteRelay"
-SERVER_INSTALL_DIR="$BASE_INSTALL_DIR/Server"
-CLIENT_INSTALL_DIR="$BASE_INSTALL_DIR/Client"
+USER_HOME=$(eval echo ~$APP_USER)
+if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
+    echo "Error: Could not resolve home for $APP_USER." >&2
+    exit 1
+fi
 
-# System service file
-SYSTEM_SERVICE_FILE="/etc/systemd/system/remote-relay-server.service"
-
-# Client autostart file
-XDG_AUTOSTART_DIR="$USER_HOME/.config/autostart"
-DESKTOP_FILE_PATH="$XDG_AUTOSTART_DIR/remote-relay-client.desktop"
-
-# Wayfire configuration
+BASE_INSTALL_DIR="$USER_HOME/RemoteRelay"
+SERVER_INSTALL_DIR="$BASE_INSTALL_DIR/server"
+CLIENT_INSTALL_DIR="$BASE_INSTALL_DIR/client"
+LEGACY_BASE_DIR="$USER_HOME/.local/share/RemoteRelay"
+AUTOSTART_DESKTOP="$USER_HOME/.config/autostart/remote-relay-client.desktop"
 WAYFIRE_INI="$USER_HOME/.config/wayfire.ini"
 
-# Welcome Message
-echo "----------------------------------------------------"
-echo "    RemoteRelay Uninstall Script    "
-echo "----------------------------------------------------"
-echo "User: $APP_USER"
-echo "Installation directory: $BASE_INSTALL_DIR"
-echo
-
-# Check what's installed
-SERVER_INSTALLED=false
-CLIENT_INSTALLED=false
-SYSTEM_SERVICE_EXISTS=false
+SERVER_PRESENT=false
+CLIENT_PRESENT=false
+LEGACY_PRESENT=false
+SERVICE_PRESENT=false
 
 if [ -d "$SERVER_INSTALL_DIR" ] && [ -f "$SERVER_INSTALL_DIR/RemoteRelay.Server" ]; then
-    SERVER_INSTALLED=true
-    echo "✓ Server installation found"
+    SERVER_PRESENT=true
 fi
 
 if [ -d "$CLIENT_INSTALL_DIR" ] && [ -f "$CLIENT_INSTALL_DIR/RemoteRelay" ]; then
-    CLIENT_INSTALLED=true
-    echo "✓ Client installation found"
+    CLIENT_PRESENT=true
 fi
 
-if [ -f "$SYSTEM_SERVICE_FILE" ]; then
-    SYSTEM_SERVICE_EXISTS=true
-    echo "✓ System service found"
+if [ -d "$LEGACY_BASE_DIR" ]; then
+    LEGACY_PRESENT=true
 fi
 
-if [ -f "$DESKTOP_FILE_PATH" ]; then
-    echo "✓ Client autostart entry found"
+if [ -f "$SERVER_SERVICE_FILE" ]; then
+    SERVICE_PRESENT=true
 fi
 
-if [ "$SERVER_INSTALLED" = false ] && [ "$CLIENT_INSTALLED" = false ] && [ "$SYSTEM_SERVICE_EXISTS" = false ]; then
-    echo "No RemoteRelay installations found."
+if ! $SERVER_PRESENT && ! $CLIENT_PRESENT && ! $LEGACY_PRESENT && ! $SERVICE_PRESENT; then
+    echo "No RemoteRelay installation artifacts found for user $APP_USER."
     exit 0
 fi
 
+echo "----------------------------------------------------"
+echo "RemoteRelay Uninstaller"
+echo "----------------------------------------------------"
+echo "User: $APP_USER"
+echo "Install root: $BASE_INSTALL_DIR"
 echo
 
-# Ask what to uninstall
-UNINSTALL_TYPE=""
-if [ "$SERVER_INSTALLED" = true ] && [ "$CLIENT_INSTALLED" = true ]; then
-    while [[ "$UNINSTALL_TYPE" != "S" && "$UNINSTALL_TYPE" != "C" && "$UNINSTALL_TYPE" != "B" ]]; do
-        read -p "What would you like to uninstall? (S for Server, C for Client, B for Both): " UNINSTALL_TYPE
-        UNINSTALL_TYPE=$(echo "$UNINSTALL_TYPE" | tr '[:lower:]' '[:upper:]')
-        if [[ "$UNINSTALL_TYPE" != "S" && "$UNINSTALL_TYPE" != "C" && "$UNINSTALL_TYPE" != "B" ]]; then
-            echo "Invalid input. Please enter S, C, or B."
-        fi
+if $SERVER_PRESENT; then
+    echo "- Server files located at $SERVER_INSTALL_DIR"
+fi
+if $CLIENT_PRESENT; then
+    echo "- Client files located at $CLIENT_INSTALL_DIR"
+fi
+if $LEGACY_PRESENT; then
+    echo "- Legacy installation detected at $LEGACY_BASE_DIR"
+fi
+if $SERVICE_PRESENT; then
+    echo "- System service $SERVER_SERVICE_NAME present"
+fi
+echo
+
+ask_yes_no() {
+    local prompt="$1"
+    local default="$2"
+    local reply
+    while true; do
+        read -r -p "$prompt" reply || reply=""
+        reply=${reply:-$default}
+        case "${reply^^}" in
+            Y|YES) return 0 ;;
+            N|NO) return 1 ;;
+        esac
+        echo "Please answer y or n."
     done
-elif [ "$SERVER_INSTALLED" = true ]; then
-    echo "Only server installation found."
-    read -p "Uninstall server? (y/N): " CONFIRM
-    if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-        UNINSTALL_TYPE="S"
-    else
-        echo "Uninstall cancelled."
-        exit 0
-    fi
-elif [ "$CLIENT_INSTALLED" = true ]; then
-    echo "Only client installation found."
-    read -p "Uninstall client? (y/N): " CONFIRM
-    if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-        UNINSTALL_TYPE="C"
-    else
-        echo "Uninstall cancelled."
-        exit 0
-    fi
-elif [ "$SYSTEM_SERVICE_EXISTS" = true ]; then
-    echo "Only system service found (no installation files)."
-    read -p "Remove system service? (y/N): " CONFIRM
-    if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-        UNINSTALL_TYPE="S"
-    else
-        echo "Uninstall cancelled."
-        exit 0
+}
+
+REMOVE_SERVER=false
+REMOVE_CLIENT=false
+
+if $SERVER_PRESENT || $SERVICE_PRESENT; then
+    if ask_yes_no "Remove the RemoteRelay server component? [Y/n] " "Y"; then
+        REMOVE_SERVER=true
     fi
 fi
 
-echo
-
-# Check for root privileges if server uninstall is requested
-if [[ "$UNINSTALL_TYPE" == "S" || "$UNINSTALL_TYPE" == "B" ]]; then
-    if [ "$EUID" -ne 0 ] && [ "$SYSTEM_SERVICE_EXISTS" = true ]; then
-        echo "Error: Root privileges required to remove system service."
-        echo "Please run this script with sudo to uninstall the server."
-        exit 1
+if $CLIENT_PRESENT || [ -f "$AUTOSTART_DESKTOP" ]; then
+    if ask_yes_no "Remove the RemoteRelay client component? [Y/n] " "Y"; then
+        REMOVE_CLIENT=true
     fi
 fi
 
-# --- Server Uninstall ---
-uninstall_server() {
-    echo "Uninstalling RemoteRelay Server..."
-    
-    # Stop and disable system service
-    if [ "$SYSTEM_SERVICE_EXISTS" = true ]; then
-        echo "Stopping remote-relay-server service..."
-        if systemctl is-active --quiet remote-relay-server.service; then
-            systemctl stop remote-relay-server.service
+if ! $REMOVE_SERVER && ! $REMOVE_CLIENT && ! $LEGACY_PRESENT; then
+    echo "Nothing selected for removal. Exiting."
+    exit 0
+fi
+
+if $REMOVE_SERVER && [ "$EUID" -ne 0 ]; then
+    echo "Error: Removing the server requires sudo privileges." >&2
+    echo "Re-run with: sudo -E ./uninstall.sh" >&2
+    exit 1
+fi
+
+SUMMARY=()
+
+remove_service() {
+    if $REMOVE_SERVER && $SERVICE_PRESENT; then
+        echo "Stopping $SERVER_SERVICE_NAME..."
+        if systemctl is-active --quiet "$SERVER_SERVICE_NAME"; then
+            systemctl stop "$SERVER_SERVICE_NAME"
         fi
-        
-        echo "Disabling remote-relay-server service..."
-        if systemctl is-enabled --quiet remote-relay-server.service 2>/dev/null; then
-            systemctl disable remote-relay-server.service
+
+        echo "Disabling $SERVER_SERVICE_NAME..."
+        if systemctl is-enabled --quiet "$SERVER_SERVICE_NAME" 2>/dev/null; then
+            systemctl disable "$SERVER_SERVICE_NAME"
         fi
-        
-        echo "Removing service file: $SYSTEM_SERVICE_FILE"
-        rm -f "$SYSTEM_SERVICE_FILE"
-        
-        echo "Reloading systemd daemon..."
+
+        echo "Removing service file $SERVER_SERVICE_FILE"
+        rm -f "$SERVER_SERVICE_FILE"
         systemctl daemon-reload
+        SUMMARY+=("Removed systemd service $SERVER_SERVICE_NAME")
     fi
-    
-    # Remove server files
-    if [ -d "$SERVER_INSTALL_DIR" ]; then
-        echo "Removing server files from: $SERVER_INSTALL_DIR"
+}
+
+remove_server_files() {
+    if $REMOVE_SERVER && $SERVER_PRESENT; then
+        echo "Deleting server files at $SERVER_INSTALL_DIR"
         rm -rf "$SERVER_INSTALL_DIR"
+        SUMMARY+=("Deleted server files from $SERVER_INSTALL_DIR")
     fi
-    
-    echo "Server uninstall complete."
 }
 
-# --- Client Uninstall ---
-uninstall_client() {
-    echo "Uninstalling RemoteRelay Client..."
-    
-    # Remove autostart entry
-    if [ -f "$DESKTOP_FILE_PATH" ]; then
-        echo "Removing autostart entry: $DESKTOP_FILE_PATH"
-        rm -f "$DESKTOP_FILE_PATH"
+remove_client_autostart() {
+    if [ -f "$AUTOSTART_DESKTOP" ]; then
+        echo "Removing desktop autostart entry $AUTOSTART_DESKTOP"
+        rm -f "$AUTOSTART_DESKTOP"
+        SUMMARY+=("Removed XDG autostart entry")
     fi
-    
-    # Remove client files
-    if [ -d "$CLIENT_INSTALL_DIR" ]; then
-        echo "Removing client files from: $CLIENT_INSTALL_DIR"
+}
+
+clean_wayfire_autostart() {
+    local tmp="$WAYFIRE_INI.autostart.$$"
+    awk '
+        BEGIN { in_autostart = 0; }
+        /^\s*\[autostart\]\s*$/ {
+            in_autostart = 1;
+            print;
+            next;
+        }
+        /^\s*\[/ {
+            in_autostart = 0;
+            print;
+            next;
+        }
+        {
+            if (in_autostart && $0 ~ /^\s*remote-relay-client\s*=/) {
+                next;
+            }
+            print;
+        }
+    ' "$WAYFIRE_INI" > "$tmp" && mv "$tmp" "$WAYFIRE_INI"
+}
+
+clean_wayfire_idle() {
+    local tmp="$WAYFIRE_INI.idle.$$"
+    awk '
+        BEGIN { in_idle = 0; }
+        /^\s*\[idle\]\s*$/ {
+            in_idle = 1; print; next;
+        }
+        /^\s*\[/ {
+            in_idle = 0; print; next;
+        }
+        {
+            if (in_idle) {
+                if ($0 ~ /^\s*(dpms_timeout|screensaver_timeout)\s*=\s*0\s*$/) {
+                    next;
+                }
+            }
+            print;
+        }
+    ' "$WAYFIRE_INI" > "$tmp" && mv "$tmp" "$WAYFIRE_INI"
+}
+
+remove_client_files() {
+    if $REMOVE_CLIENT && $CLIENT_PRESENT; then
+        echo "Deleting client files at $CLIENT_INSTALL_DIR"
         rm -rf "$CLIENT_INSTALL_DIR"
+        SUMMARY+=("Deleted client files from $CLIENT_INSTALL_DIR")
     fi
-    
-    # Ask about Wayfire configuration cleanup
-    if [ -f "$WAYFIRE_INI" ]; then
-        echo
-        read -p "Remove RemoteRelay kiosk settings from Wayfire configuration? (y/N): " WAYFIRE_CLEANUP
-        if [[ "$WAYFIRE_CLEANUP" =~ ^[Yy]$ ]]; then
-            echo "Attempting to remove kiosk settings from $WAYFIRE_INI..."
-            
-            # Create AWK script to remove or reset idle section
-            AWK_SCRIPT='
-            BEGIN {
-                in_idle_section = 0;
-                skip_section = 0;
-                current_section_lines_buffer = "";
-            }
-            
-            function flush_current_section_buffer() {
-                if (!skip_section && current_section_lines_buffer != "") {
-                    print current_section_lines_buffer;
-                }
-                current_section_lines_buffer = "";
-                in_idle_section = 0;
-                skip_section = 0;
-            }
-            
-            /^\s*\[idle\]\s*$/ {
-                flush_current_section_buffer();
-                in_idle_section = 1;
-                current_section_lines_buffer = $0;
-                next;
-            }
-            
-            /^\s*\[.*\]\s*$/ {
-                flush_current_section_buffer();
-                current_section_lines_buffer = $0;
-                next;
-            }
-            
-            {
-                if (in_idle_section) {
-                    # Skip lines that set timeouts to 0 (our kiosk settings)
-                    if ($0 ~ /^\s*(dpms_timeout|screensaver_timeout)\s*=\s*0\s*$/) {
-                        next;
-                    }
-                    # If this is the only content in the idle section, mark for removal
-                    if (current_section_lines_buffer == "[idle]" && 
-                        ($0 ~ /^\s*(dpms_timeout|screensaver_timeout)\s*=\s*0/ || $0 ~ /^\s*$/)) {
-                        skip_section = 1;
-                        next;
-                    }
-                }
-                current_section_lines_buffer = (current_section_lines_buffer == "" ? $0 : current_section_lines_buffer ORS $0);
-            }
-            
-            END {
-                flush_current_section_buffer();
-            }
-            '
-            
-            WAYFIRE_INI_TMP="$WAYFIRE_INI.tmp.$$"
-            if awk "$AWK_SCRIPT" "$WAYFIRE_INI" > "$WAYFIRE_INI_TMP"; then
-                if [ -s "$WAYFIRE_INI_TMP" ]; then
-                    mv "$WAYFIRE_INI_TMP" "$WAYFIRE_INI"
-                    echo "Wayfire configuration cleanup complete."
-                else
-                    echo "Warning: Wayfire configuration cleanup resulted in empty file. Original preserved."
-                    rm -f "$WAYFIRE_INI_TMP"
-                fi
-            else
-                echo "Warning: Failed to clean up Wayfire configuration. Original preserved."
-                rm -f "$WAYFIRE_INI_TMP"
-            fi
-        fi
-    fi
-    
-    echo "Client uninstall complete."
 }
 
-# --- Perform Uninstall Based on User Choice ---
-if [[ "$UNINSTALL_TYPE" == "S" || "$UNINSTALL_TYPE" == "B" ]]; then
-    uninstall_server
-    echo
-fi
-
-if [[ "$UNINSTALL_TYPE" == "C" || "$UNINSTALL_TYPE" == "B" ]]; then
-    uninstall_client
-    echo
-fi
-
-# Clean up base directory if empty
-if [ -d "$BASE_INSTALL_DIR" ]; then
-    if [ -z "$(ls -A "$BASE_INSTALL_DIR" 2>/dev/null)" ]; then
-        echo "Removing empty base directory: $BASE_INSTALL_DIR"
-        rmdir "$BASE_INSTALL_DIR"
-        
-        # Also try to remove parent .local/share if it becomes empty
-        PARENT_DIR="$(dirname "$BASE_INSTALL_DIR")"
-        if [ -d "$PARENT_DIR" ] && [ -z "$(ls -A "$PARENT_DIR" 2>/dev/null)" ]; then
-            rmdir "$PARENT_DIR" 2>/dev/null || true
-        fi
+remove_legacy_tree() {
+    if $LEGACY_PRESENT && ask_yes_no "Remove legacy directory at $LEGACY_BASE_DIR? [Y/n] " "Y"; then
+        rm -rf "$LEGACY_BASE_DIR"
+        SUMMARY+=("Removed legacy directory $LEGACY_BASE_DIR")
     fi
+}
+
+remove_service
+remove_server_files
+
+if $REMOVE_CLIENT; then
+    remove_client_autostart
+    if [ -f "$WAYFIRE_INI" ]; then
+        clean_wayfire_autostart
+        if ask_yes_no "Remove Wayfire kiosk settings (screen blanking overrides)? [Y/n] " "Y"; then
+            clean_wayfire_idle
+            SUMMARY+=("Reverted Wayfire idle overrides")
+        fi
+        SUMMARY+=("Updated Wayfire autostart entries")
+    fi
+    remove_client_files
 fi
 
-# Final message
-echo "----------------------------------------------------"
-echo "         Uninstall Complete!         "
-echo "----------------------------------------------------"
+remove_legacy_tree
 
-case "$UNINSTALL_TYPE" in
-    "S")
-        echo "RemoteRelay Server has been uninstalled."
-        echo "- System service removed and disabled"
-        echo "- Server files deleted"
-        ;;
-    "C")
-        echo "RemoteRelay Client has been uninstalled."
-        echo "- Autostart entry removed"
-        echo "- Client files deleted"
-        ;;
-    "B")
-        echo "RemoteRelay Server and Client have been uninstalled."
-        echo "- System service removed and disabled"
-        echo "- Autostart entry removed"
-        echo "- All application files deleted"
-        ;;
-esac
+if [ -d "$BASE_INSTALL_DIR" ] && [ -z "$(ls -A "$BASE_INSTALL_DIR" 2>/dev/null)" ]; then
+    echo "Removing empty directory $BASE_INSTALL_DIR"
+    rmdir "$BASE_INSTALL_DIR"
+    SUMMARY+=("Removed empty $BASE_INSTALL_DIR")
+fi
 
 echo
-echo "Thank you for using RemoteRelay!"
+echo "----------------------------------------------------"
+echo "Uninstall complete"
+echo "----------------------------------------------------"
+for item in "${SUMMARY[@]}"; do
+    echo "- $item"
+done
+
+if [ ${#SUMMARY[@]} -eq 0 ]; then
+    echo "No changes were made."
+fi
+
+echo
+echo "If any components remain, rerun this script with sudo as needed."
 
 exit 0

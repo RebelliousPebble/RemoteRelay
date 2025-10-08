@@ -1,458 +1,509 @@
 #!/bin/bash
 
-# Determine user's home directory for installation
-# Use SUDO_USER if set (script run with sudo), otherwise current user
-APP_USER="${SUDO_USER:-$(whoami)}"
-USER_HOME=$(eval echo ~$APP_USER)
+set -euo pipefail
 
-if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
-  echo "Error: Could not determine user's home directory. Exiting."
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+
+if [ "$EUID" -ne 0 ]; then
+  echo "Error: This installer must be run as root (sudo)." >&2
   exit 1
 fi
 
-# Define installation directories within the user's home
-BASE_INSTALL_DIR="$USER_HOME/.local/share/RemoteRelay"
-SERVER_INSTALL_DIR="$BASE_INSTALL_DIR/Server"
-CLIENT_INSTALL_DIR="$BASE_INSTALL_DIR/Client"
+APP_USER="${SUDO_USER:-}"
+if [ -z "$APP_USER" ] || [ "$APP_USER" = "root" ]; then
+  echo "Error: Unable to determine the non-root user running sudo." >&2
+  echo "Re-run using: sudo -E ./install.sh" >&2
+  exit 1
+fi
 
-# These are relative to the location of install.sh when extracted by makeself
+USER_HOME=$(eval echo ~$APP_USER)
+if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
+  echo "Error: Could not resolve home directory for $APP_USER." >&2
+  exit 1
+fi
+
+BASE_INSTALL_DIR="$USER_HOME/RemoteRelay"
+SERVER_INSTALL_DIR="$BASE_INSTALL_DIR/server"
+CLIENT_INSTALL_DIR="$BASE_INSTALL_DIR/client"
+UNINSTALL_SCRIPT_SOURCE="uninstall.sh"
+UNINSTALL_SCRIPT_DEST="$USER_HOME/RemoteRelay/uninstall.sh"
 SERVER_FILES_SOURCE_DIR="server_files"
 CLIENT_FILES_SOURCE_DIR="client_files"
-UNINSTALL_SCRIPT_SOURCE="uninstall.sh"
+LEGACY_BASE_DIR="$USER_HOME/.local/share/RemoteRelay"
+SERVER_SERVICE_NAME="remote-relay-server.service"
+SERVER_SERVICE_FILE="/etc/systemd/system/$SERVER_SERVICE_NAME"
 
-# Welcome Message
-echo "----------------------------------------------------"
-echo " Welcome to the RemoteRelay Installation Script "
-echo "----------------------------------------------------"
-echo "Installing for user: $APP_USER"
-echo "Installation base directory: $BASE_INSTALL_DIR"
-echo
+SUMMARY=()
 
-# User Choices
-INSTALL_TYPE=""
-SERVER_ADDRESS="" # Changed from SERVER_IP to SERVER_ADDRESS
+bold() { printf "\033[1m%s\033[0m" "$1"; }
 
-while [[ "$INSTALL_TYPE" != "S" && "$INSTALL_TYPE" != "C" && "$INSTALL_TYPE" != "B" ]]; do
-  read -p "Choose installation type (S for Server, C for Client, B for Both): " INSTALL_TYPE
-  INSTALL_TYPE=$(echo "$INSTALL_TYPE" | tr '[:lower:]' '[:upper:]') # Convert to uppercase
-  if [[ "$INSTALL_TYPE" != "S" && "$INSTALL_TYPE" != "C" && "$INSTALL_TYPE" != "B" ]]; then
-    echo "Invalid input. Please enter S, C, or B."
-  fi
-done
+prompt_yes_no() {
+  local prompt="$1"
+  local default="$2"
+  local answer
+  while true; do
+    read -r -p "$prompt" answer || answer=""
+    answer=${answer:-$default}
+    case "${answer^^}" in
+      Y|YES) return 0 ;;
+      N|NO) return 1 ;;
+    esac
+    echo "Please answer yes or no (y/n)."
+  done
+}
 
-if [[ "$INSTALL_TYPE" == "C" || "$INSTALL_TYPE" == "B" ]]; then
-  DEFAULT_ADDRESS="localhost" # Changed from 127.0.0.1
-  if [[ "$INSTALL_TYPE" == "C" ]]; then
-    read -p "Enter the Server's address (hostname or IP): " SERVER_ADDRESS
-  else # Both Server and Client
-    read -p "Enter the Server's address (hostname or IP, default: $DEFAULT_ADDRESS for local server): " USER_INPUT_ADDRESS
-    SERVER_ADDRESS=${USER_INPUT_ADDRESS:-$DEFAULT_ADDRESS}
-  fi
-  if [ -z "$SERVER_ADDRESS" ]; then
-    echo "Server address cannot be empty. Exiting."
-    exit 1
-  fi
-fi
+ensure_dir_owned_by_user() {
+  local dir="$1"
+  mkdir -p "$dir"
+  chown -R "$APP_USER:$APP_USER" "$dir"
+}
 
-echo # Newline for better readability
-
-# Check if server installation requires root privileges
-if [[ "$INSTALL_TYPE" == "S" || "$INSTALL_TYPE" == "B" ]]; then
-  if [ "$EUID" -ne 0 ]; then
-    echo "Error: Server installation requires root privileges to install as a system service."
-    echo "Please run this script with sudo when installing the server."
-    exit 1
-  fi
-fi
-
-# --- Server Installation ---
-install_server() {
-  echo "Starting Server Installation..."
-
-  echo "Creating installation directory: $SERVER_INSTALL_DIR"
-  mkdir -p "$SERVER_INSTALL_DIR"
-  if [ ! -d "$SERVER_FILES_SOURCE_DIR" ]; then
-    echo "Error: Server files source directory '$SERVER_FILES_SOURCE_DIR' not found. Make sure it's in the same directory as the installer."
-    exit 1
-  fi
-  echo "Copying server files to $SERVER_INSTALL_DIR..."
-  # Copy all contents from the source to the target
-  cp -a "$SERVER_FILES_SOURCE_DIR/." "$SERVER_INSTALL_DIR/"
-  chmod +x "$SERVER_INSTALL_DIR/RemoteRelay.Server"
-  
-  # Set ownership to the target user
-  chown -R "$APP_USER:$APP_USER" "$SERVER_INSTALL_DIR"
-
-  # System-level systemd service
-  SYSTEM_SYSTEMD_DIR="/etc/systemd/system"
-  SERVICE_FILE="$SYSTEM_SYSTEMD_DIR/remote-relay-server.service"
-
-  # Check for jq
-  if ! command -v jq &> /dev/null
-  then
-      echo "Warning: jq could not be found. Please install jq to enable InactiveRelay configuration in systemd service."
-      echo "On Debian/Ubuntu: sudo apt install jq"
-      echo "Skipping InactiveRelay configuration for systemd service."
-      # Set INACTIVE_RELAY_PIN and INACTIVE_RELAY_STATE to empty so the rest of the script behaves as if no config found
-      INACTIVE_RELAY_PIN=""
-      INACTIVE_RELAY_STATE=""
+preserve_file_if_exists() {
+  local file_path="$1"
+  local tmp_var="$2"
+  if [ -f "$file_path" ]; then
+    local tmp_backup
+    tmp_backup=$(mktemp)
+    cp "$file_path" "$tmp_backup"
+    printf -v "$tmp_var" '%s' "$tmp_backup"
   else
-      CONFIG_FILE="$SERVER_INSTALL_DIR/config.json"
-      if [ -f "$CONFIG_FILE" ]; then
-          INACTIVE_RELAY_PIN=$(jq -r '.InactiveRelay.Pin // empty' "$CONFIG_FILE")
-          INACTIVE_RELAY_STATE=$(jq -r '.InactiveRelay.InactiveState // empty' "$CONFIG_FILE")
-      else
-          echo "Warning: Configuration file $CONFIG_FILE not found. Skipping InactiveRelay configuration."
-          INACTIVE_RELAY_PIN=""
-          INACTIVE_RELAY_STATE=""
-      fi
+    printf -v "$tmp_var" '%s' ""
   fi
+}
 
-  EXEC_START_PRE=""
-  EXEC_STOP_POST=""
+restore_preserved_file() {
+  local backup_path="$1"
+  local dest_path="$2"
+  if [ -n "$backup_path" ] && [ -f "$backup_path" ]; then
+    mv "$backup_path" "$dest_path"
+  fi
+}
 
-  if [ -n "$INACTIVE_RELAY_PIN" ] && [ -n "$INACTIVE_RELAY_STATE" ]; then
-      # Basic validation (more robust validation is in the C# app)
-      if [[ "$INACTIVE_RELAY_PIN" =~ ^[0-9]+$ ]] && \
-         ( [[ "$INACTIVE_RELAY_STATE" == "High" ]] || [[ "$INACTIVE_RELAY_STATE" == "Low" ]] || \
-           [[ "$INACTIVE_RELAY_STATE" == "high" ]] || [[ "$INACTIVE_RELAY_STATE" == "low" ]] ); then # Added lowercase variants
+stop_server_if_running() {
+  if systemctl is-active --quiet "$SERVER_SERVICE_NAME"; then
+    echo "Stopping existing $SERVER_SERVICE_NAME..."
+    systemctl stop "$SERVER_SERVICE_NAME"
+    return 0
+  fi
+  return 1
+}
 
-          REMOTE_RELAY_EXEC="$SERVER_INSTALL_DIR/RemoteRelay.Server" # Path to the executable
-          # Ensure state is capitalized for the command, C# app is case-insensitive but consistency is good
-          CMD_STATE=$(echo "$INACTIVE_RELAY_STATE" | awk '{print toupper(substr($0,1,1))tolower(substr($0,2))}')
-
-          EXEC_START_PRE="ExecStartPre=$REMOTE_RELAY_EXEC set-inactive-relay --pin $INACTIVE_RELAY_PIN --state $CMD_STATE"
-          EXEC_STOP_POST="ExecStopPost=$REMOTE_RELAY_EXEC set-inactive-relay --pin $INACTIVE_RELAY_PIN --state $CMD_STATE"
-          echo "Inactive Relay systemd integration: Configured for pin $INACTIVE_RELAY_PIN, state $CMD_STATE"
-      else
-          echo "Warning: InactiveRelay Pin ('$INACTIVE_RELAY_PIN') or State ('$INACTIVE_RELAY_STATE') in $CONFIG_FILE is invalid. Skipping systemd pre/post commands."
-      fi
+start_server_service() {
+  echo "Starting $SERVER_SERVICE_NAME..."
+  systemctl start "$SERVER_SERVICE_NAME" || true
+  if systemctl is-active --quiet "$SERVER_SERVICE_NAME"; then
+    echo "Server service is running."
   else
-      if command -v jq &> /dev/null && [ -f "$CONFIG_FILE" ]; then # Only show this if jq was found and config file existed
-        echo "InactiveRelay settings not found or incomplete in $CONFIG_FILE. Skipping systemd pre/post commands."
-      fi
+    echo "Warning: Server service failed to start. Check with 'journalctl -u $SERVER_SERVICE_NAME'."
   fi
+}
 
-  echo "Creating systemd system service file: $SERVICE_FILE"
-  # Start creating the service file
-  cat << EOF > "$SERVICE_FILE"
+install_systemd_service_for_server() {
+  local inactive_pin="$1"
+  local inactive_state="$2"
+
+  cat > "$SERVER_SERVICE_FILE" <<EOF
 [Unit]
-Description=RemoteRelay Server (System Service)
+Description=RemoteRelay Server
 After=network.target
 
 [Service]
 User=$APP_USER
 Group=$APP_USER
-EOF
-
-  # Conditionally add ExecStartPre
-  if [ -n "$EXEC_START_PRE" ]; then
-    echo "$EXEC_START_PRE" >> "$SERVICE_FILE"
-  fi
-
-  # Add mandatory lines
-  cat << EOF >> "$SERVICE_FILE"
 WorkingDirectory=$SERVER_INSTALL_DIR
 ExecStart=$SERVER_INSTALL_DIR/RemoteRelay.Server
-EOF
-
-  # Conditionally add ExecStopPost
-  if [ -n "$EXEC_STOP_POST" ]; then
-    echo "$EXEC_STOP_POST" >> "$SERVICE_FILE"
-  fi
-
-  # Add the rest of the service file
-  cat << EOF >> "$SERVICE_FILE"
 Restart=always
 RestartSec=5
-# Environment=DOTNET_ROOT=/usr/share/dotnet # May not be needed if .NET is in PATH or self-contained
+EOF
+
+  if [ -n "$inactive_pin" ] && [ -n "$inactive_state" ]; then
+    echo "ExecStartPre=$SERVER_INSTALL_DIR/RemoteRelay.Server set-inactive-relay --pin $inactive_pin --state $inactive_state" >> "$SERVER_SERVICE_FILE"
+    echo "ExecStopPost=$SERVER_INSTALL_DIR/RemoteRelay.Server set-inactive-relay --pin $inactive_pin --state $inactive_state" >> "$SERVER_SERVICE_FILE"
+  fi
+
+  cat >> "$SERVER_SERVICE_FILE" <<'EOF'
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-  echo "Reloading systemd daemon..."
+  chmod 644 "$SERVER_SERVICE_FILE"
   systemctl daemon-reload
-  echo "Enabling remote-relay-server system service..."
-  systemctl enable remote-relay-server.service
-  echo "Starting remote-relay-server system service..."
-  systemctl start remote-relay-server.service
-
-  # Check service status
-  if systemctl is-active --quiet remote-relay-server.service; then
-    echo "RemoteRelay Server system service is active and running."
-  else
-    echo "Warning: RemoteRelay Server system service failed to start. Check logs with 'journalctl -u remote-relay-server.service'"
-  fi
-  echo "Server Installation Complete."
-  echo "To manage the server, use: systemctl [status|start|stop|restart] remote-relay-server.service"
-  echo "The server will now start automatically on system boot."
-  echo
+  systemctl enable "$SERVER_SERVICE_NAME"
 }
 
-# --- Client Installation ---
-install_client() {
-  echo "Starting Client Installation..."
+configure_wayfire_idle() {
+  local wayfire_ini="$1"
+  local tmp="$wayfire_ini.tmp.$$"
 
-  echo "Creating installation directory: $CLIENT_INSTALL_DIR"
-  mkdir -p "$CLIENT_INSTALL_DIR"
-   if [ ! -d "$CLIENT_FILES_SOURCE_DIR" ]; then
-    echo "Error: Client files source directory '$CLIENT_FILES_SOURCE_DIR' not found. Make sure it's in the same directory as the installer."
-    exit 1
+  awk '
+    BEGIN {
+      in_idle = 0; seen_idle = 0; wrote_dpms = 0; wrote_screen = 0;
+    }
+    /^\s*\[idle\]\s*$/ {
+      if (in_idle) {
+        if (!wrote_dpms) print "dpms_timeout = 0";
+        if (!wrote_screen) print "screensaver_timeout = 0";
+      }
+      print; in_idle = 1; seen_idle = 1; wrote_dpms = 0; wrote_screen = 0; next;
+    }
+    /^\s*\[/ {
+      if (in_idle) {
+        if (!wrote_dpms) print "dpms_timeout = 0";
+        if (!wrote_screen) print "screensaver_timeout = 0";
+      }
+      in_idle = 0;
+      print; next;
+    }
+    {
+      if (in_idle) {
+        if ($0 ~ /^\s*dpms_timeout\s*=/) {
+          print "dpms_timeout = 0"; wrote_dpms = 1; next;
+        }
+        if ($0 ~ /^\s*screensaver_timeout\s*=/) {
+          print "screensaver_timeout = 0"; wrote_screen = 1; next;
+        }
+      }
+      print;
+    }
+    END {
+      if (in_idle) {
+        if (!wrote_dpms) print "dpms_timeout = 0";
+        if (!wrote_screen) print "screensaver_timeout = 0";
+      } else if (!seen_idle) {
+        print "[idle]";
+        print "dpms_timeout = 0";
+        print "screensaver_timeout = 0";
+      }
+    }
+  ' "$wayfire_ini" > "$tmp" && mv "$tmp" "$wayfire_ini"
+}
+
+ensure_wayfire_autostart() {
+  local wayfire_ini="$1"
+  local command_line="$2"
+  local tmp="$wayfire_ini.autostart.$$"
+
+  awk -v entry="$command_line" '
+    BEGIN { in_autostart = 0; seen_autostart = 0; wrote_entry = 0; key = "remote-relay-client"; }
+    /^\s*\[autostart\]\s*$/ {
+      if (in_autostart && !wrote_entry) print key " = " entry;
+      print; in_autostart = 1; seen_autostart = 1; wrote_entry = 0; next;
+    }
+    /^\s*\[/ {
+      if (in_autostart && !wrote_entry) print key " = " entry;
+      in_autostart = 0;
+      print; next;
+    }
+    {
+      if (in_autostart) {
+        if ($0 ~ "^\\s*" key "\\s*=") {
+          if (!wrote_entry) print key " = " entry;
+          wrote_entry = 1; next;
+        }
+      }
+      print;
+    }
+    END {
+      if (in_autostart && !wrote_entry) {
+        print key " = " entry;
+      } else if (!seen_autostart) {
+        print "[autostart]";
+        print key " = " entry;
+      }
+    }
+  ' "$wayfire_ini" > "$tmp" && mv "$tmp" "$wayfire_ini"
+}
+
+configure_wayfire() {
+  local client_exec="$1"
+  local disable_idle="${2:-false}"
+  local wayfire_ini="$USER_HOME/.config/wayfire.ini"
+  ensure_dir_owned_by_user "$USER_HOME/.config"
+  if [ ! -f "$wayfire_ini" ]; then
+    touch "$wayfire_ini"
+    chown "$APP_USER:$APP_USER" "$wayfire_ini"
   fi
-  echo "Copying client files to $CLIENT_INSTALL_DIR..."
-  # Copy all contents from the source to the target
-  cp -a "$CLIENT_FILES_SOURCE_DIR/." "$CLIENT_INSTALL_DIR/"
-  chmod +x "$CLIENT_INSTALL_DIR/RemoteRelay"
-  
-  # Set ownership to the target user (important when running with sudo)
-  chown -R "$APP_USER:$APP_USER" "$CLIENT_INSTALL_DIR"
 
-  SERVER_DETAILS_FILE="$CLIENT_INSTALL_DIR/ServerDetails.json"
-  if [ -f "$SERVER_DETAILS_FILE" ]; then
-    echo "Updating Server Address in $SERVER_DETAILS_FILE to $SERVER_ADDRESS..."
-    TMP_SERVER_DETAILS_FILE=$(mktemp)
-    # This sed command is a bit more robust for various JSON value characters
-    sed -E "s/(\"Host\":\s*\")[^\"]*(\")/\1${SERVER_ADDRESS//\\&/\\\\&}\2/" "$SERVER_DETAILS_FILE" > "$TMP_SERVER_DETAILS_FILE" && mv "$TMP_SERVER_DETAILS_FILE" "$SERVER_DETAILS_FILE"
-    if [ $? -ne 0 ]; then
-        echo "Warning: Failed to update Server Address in $SERVER_DETAILS_FILE using sed."
-        echo "Please ensure $SERVER_DETAILS_FILE contains a line like: \"Host\": \"OLD_ADDRESS\""
-        [ -f "$TMP_SERVER_DETAILS_FILE" ] && rm "$TMP_SERVER_DETAILS_FILE"
-    fi
+  ensure_wayfire_autostart "$wayfire_ini" "$client_exec"
+  if [ "$disable_idle" = "true" ]; then
+    configure_wayfire_idle "$wayfire_ini"
+  fi
+  chown "$APP_USER:$APP_USER" "$wayfire_ini"
+}
+
+create_autostart_desktop() {
+  local client_exec="$1"
+  local enable_kiosk="$2"
+  local desktop_path="$USER_HOME/.config/autostart/remote-relay-client.desktop"
+  ensure_dir_owned_by_user "$USER_HOME/.config/autostart"
+
+  local exec_line
+  if [ "$enable_kiosk" = "true" ]; then
+    local escaped_exec
+    escaped_exec=$(printf '%s' "$client_exec" | sed 's/"/\\"/g')
+    exec_line="sh -c 'xset s noblank && xset s off && xset -dpms && \"$escaped_exec\"'"
   else
-    echo "Warning: $SERVER_DETAILS_FILE not found. Cannot update Server Address."
-    echo "The application might look for this file. It should have been part of the published client files."
+    exec_line="\"$client_exec\""
   fi
 
-  CLIENT_EXEC_PATH="$CLIENT_INSTALL_DIR/RemoteRelay" # Ensure this is defined for the Exec line
-
-  # XDG Autostart configuration
-  XDG_AUTOSTART_DIR="$USER_HOME/.config/autostart"
-  DESKTOP_FILE_NAME="remote-relay-client.desktop"
-  DESKTOP_FILE_PATH="$XDG_AUTOSTART_DIR/$DESKTOP_FILE_NAME"
-
-  echo "Creating XDG autostart directory: $XDG_AUTOSTART_DIR..."
-  mkdir -p "$XDG_AUTOSTART_DIR"
-  # Ensure proper ownership of the autostart directory
-  chown "$APP_USER:$APP_USER" "$XDG_AUTOSTART_DIR" 2>/dev/null || true
-  if [ $? -ne 0 ]; then
-    echo "Warning: Could not create XDG autostart directory: $XDG_AUTOSTART_DIR"
-    echo "Client may not autostart. Please check permissions or create it manually."
-  else
-    echo "Creating XDG autostart file: $DESKTOP_FILE_PATH..."
-    # Using a subshell for variable expansion within heredoc to avoid issues with current shell context
-    (
-    cat << EOF > "$DESKTOP_FILE_PATH"
+  cat > "$desktop_path" <<EOF
 [Desktop Entry]
 Type=Application
 Name=RemoteRelay Client
-Exec=$CLIENT_EXEC_PATH
-Terminal=false
+Exec=$exec_line
 Path=$CLIENT_INSTALL_DIR
+Terminal=false
+X-GNOME-Autostart-enabled=true
 EOF
-    )
-    if [ $? -ne 0 ]; then
-        echo "Warning: Failed to create .desktop file: $DESKTOP_FILE_PATH"
-        echo "Client may not autostart. Please check file system permissions."
+  chmod 755 "$desktop_path"
+  chown "$APP_USER:$APP_USER" "$desktop_path"
+}
+
+migrate_legacy_layout() {
+  if [ ! -d "$LEGACY_BASE_DIR" ]; then
+    return
+  fi
+
+  echo "Legacy installation detected at $LEGACY_BASE_DIR. Migrating to $BASE_INSTALL_DIR..."
+  ensure_dir_owned_by_user "$BASE_INSTALL_DIR"
+
+  if [ -d "$LEGACY_BASE_DIR/Server" ]; then
+    ensure_dir_owned_by_user "$SERVER_INSTALL_DIR"
+    cp -a "$LEGACY_BASE_DIR/Server/." "$SERVER_INSTALL_DIR/"
+  fi
+
+  if [ -d "$LEGACY_BASE_DIR/Client" ]; then
+    ensure_dir_owned_by_user "$CLIENT_INSTALL_DIR"
+    cp -a "$LEGACY_BASE_DIR/Client/." "$CLIENT_INSTALL_DIR/"
+  fi
+
+  chown -R "$APP_USER:$APP_USER" "$BASE_INSTALL_DIR"
+
+  local legacy_backup="$LEGACY_BASE_DIR-backup-$(date +%s)"
+  mv "$LEGACY_BASE_DIR" "$legacy_backup"
+  echo "Legacy files copied. Original kept at $legacy_backup"
+  SUMMARY+=("Migrated legacy installation to $BASE_INSTALL_DIR")
+}
+
+update_server_files() {
+  local server_restarted=0
+  if [ ! -d "$SERVER_FILES_SOURCE_DIR" ]; then
+    echo "Error: server payload missing." >&2
+    exit 1
+  fi
+
+  ensure_dir_owned_by_user "$SERVER_INSTALL_DIR"
+
+  local backup_config backup_appsettings backup_devsettings
+  preserve_file_if_exists "$SERVER_INSTALL_DIR/config.json" backup_config
+  preserve_file_if_exists "$SERVER_INSTALL_DIR/appsettings.json" backup_appsettings
+  preserve_file_if_exists "$SERVER_INSTALL_DIR/appsettings.Development.json" backup_devsettings
+
+  if stop_server_if_running; then
+    server_restarted=1
+  fi
+
+  find "$SERVER_INSTALL_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  cp -a "$SERVER_FILES_SOURCE_DIR/." "$SERVER_INSTALL_DIR/"
+  chmod +x "$SERVER_INSTALL_DIR/RemoteRelay.Server"
+
+  restore_preserved_file "$backup_config" "$SERVER_INSTALL_DIR/config.json"
+  restore_preserved_file "$backup_appsettings" "$SERVER_INSTALL_DIR/appsettings.json"
+  restore_preserved_file "$backup_devsettings" "$SERVER_INSTALL_DIR/appsettings.Development.json"
+
+  chown -R "$APP_USER:$APP_USER" "$SERVER_INSTALL_DIR"
+
+  local inactive_pin="" inactive_state=""
+  if command -v jq >/dev/null 2>&1; then
+    if [ -f "$SERVER_INSTALL_DIR/config.json" ]; then
+      inactive_pin=$(jq -r '.InactiveRelay.Pin // empty' "$SERVER_INSTALL_DIR/config.json") || inactive_pin=""
+      inactive_state=$(jq -r '.InactiveRelay.InactiveState // empty' "$SERVER_INSTALL_DIR/config.json") || inactive_state=""
+      if [ -n "$inactive_state" ]; then
+        inactive_state="$(echo "$inactive_state" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')"
+      fi
+      if ! [[ "$inactive_pin" =~ ^[0-9]+$ ]]; then
+        inactive_pin=""; inactive_state=""
+      fi
+      case "$inactive_state" in
+        High|Low) ;;
+        *) inactive_state="" ;;
+      esac
+    fi
+  else
+    echo "Note: jq not found. Skipping inactive relay helpers."
+  fi
+
+  install_systemd_service_for_server "$inactive_pin" "$inactive_state"
+
+  if [ "$server_restarted" -eq 1 ]; then
+    start_server_service
+  else
+    systemctl restart "$SERVER_SERVICE_NAME" >/dev/null 2>&1 || start_server_service
+  fi
+
+  SUMMARY+=("Server files installed at $SERVER_INSTALL_DIR")
+}
+
+update_client_files() {
+  if [ ! -d "$CLIENT_FILES_SOURCE_DIR" ]; then
+    echo "Error: client payload missing." >&2
+    exit 1
+  fi
+
+  ensure_dir_owned_by_user "$CLIENT_INSTALL_DIR"
+
+  local backup_server_details
+  preserve_file_if_exists "$CLIENT_INSTALL_DIR/ServerDetails.json" backup_server_details
+
+  find "$CLIENT_INSTALL_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  cp -a "$CLIENT_FILES_SOURCE_DIR/." "$CLIENT_INSTALL_DIR/"
+  chmod +x "$CLIENT_INSTALL_DIR/RemoteRelay"
+
+  restore_preserved_file "$backup_server_details" "$CLIENT_INSTALL_DIR/ServerDetails.json"
+  chown -R "$APP_USER:$APP_USER" "$CLIENT_INSTALL_DIR"
+
+  local client_exec="$CLIENT_INSTALL_DIR/RemoteRelay"
+  local enable_kiosk="false"
+  if prompt_yes_no "Disable screen blanking for the client display? [Y/n] " "Y"; then
+    enable_kiosk="true"
+  fi
+
+  create_autostart_desktop "$client_exec" "$enable_kiosk"
+  configure_wayfire "$client_exec" "$enable_kiosk"
+
+  if [ "$enable_kiosk" = "true" ]; then
+    echo "Kiosk mode enabled: desktop environments will keep the display awake before launching the client."
+  else
+    echo "Kiosk mode skipped: screen blanking settings unchanged."
+  fi
+
+  local client_summary="Client files installed at $CLIENT_INSTALL_DIR (autostart configured)"
+  if [ "$enable_kiosk" = "true" ]; then
+    client_summary+=" with kiosk screen blanking disabled"
+  fi
+  SUMMARY+=("$client_summary")
+}
+
+update_server_details_host() {
+  local server_address="$1"
+  local server_details="$CLIENT_INSTALL_DIR/ServerDetails.json"
+  if [ -f "$server_details" ]; then
+    local tmp
+    tmp=$(mktemp)
+    local escaped_address
+    escaped_address=$(printf '%s' "$server_address" | sed -e 's/[\\/&]/\\&/g')
+    if sed -E "s/(\"Host\"\s*:\s*\")([^\"]*)(\")/\\1$escaped_address\\3/" "$server_details" > "$tmp"; then
+      mv "$tmp" "$server_details"
+      chown "$APP_USER:$APP_USER" "$server_details"
+      SUMMARY+=("Updated client host to $server_address")
     else
-        chmod 755 "$DESKTOP_FILE_PATH"
-        chown "$APP_USER:$APP_USER" "$DESKTOP_FILE_PATH" 2>/dev/null || true
-        echo "RemoteRelay Client XDG autostart entry created at $DESKTOP_FILE_PATH."
+      echo "Warning: failed to update $server_details" >&2
+      rm -f "$tmp"
+    fi
+  fi
+}
 
-        # Ask user if they want kiosk mode (screen blanking disabled)
-        echo
-        read -p "Enable kiosk mode (disable screen blanking/power saving)? (y/N): " ENABLE_KIOSK
-        if [[ "$ENABLE_KIOSK" =~ ^[Yy]$ ]]; then
-            # Modify the Exec line to include xset commands while keeping the simple format
-            XSET_COMMANDS="xset s noblank && xset s off && xset -dpms"
-            # Check if .desktop file exists before modifying (it should, as we just created it)
-            if [ -f "$DESKTOP_FILE_PATH" ]; then
-                echo "Modifying Exec line in $DESKTOP_FILE_PATH to include screen blanking commands..."
-                # Replace the Exec line to include xset commands
-                TEMP_EXEC_LINE_CONTENT="sh -c '$XSET_COMMANDS && \"$CLIENT_EXEC_PATH\"'"
-                sed -i "/^Exec=/c\Exec=${TEMP_EXEC_LINE_CONTENT}" "$DESKTOP_FILE_PATH"
+copy_uninstall_script() {
+  ensure_dir_owned_by_user "$BASE_INSTALL_DIR"
+  if [ -f "$SCRIPT_DIR/$UNINSTALL_SCRIPT_SOURCE" ]; then
+    cp "$SCRIPT_DIR/$UNINSTALL_SCRIPT_SOURCE" "$UNINSTALL_SCRIPT_DEST"
+    chmod +x "$UNINSTALL_SCRIPT_DEST"
+    chown "$APP_USER:$APP_USER" "$UNINSTALL_SCRIPT_DEST"
+    SUMMARY+=("Uninstall script placed at $UNINSTALL_SCRIPT_DEST")
+  else
+    echo "Warning: uninstall script not found in installer payload." >&2
+  fi
+}
 
-                if [ $? -eq 0 ]; then
-                    echo "Exec line updated successfully to include xset commands for kiosk mode."
-                else
-                    echo "Warning: Failed to update Exec line in $DESKTOP_FILE_PATH. Screen blanking may not be disabled."
-                fi
-            else
-                echo "Warning: $DESKTOP_FILE_PATH not found for modification. This should not happen."
-            fi
-        else
-            echo "Kiosk mode disabled. Screen blanking settings will remain default."
-        fi
+echo "----------------------------------------------------"
+echo "$(bold "RemoteRelay Installer")"
+echo "----------------------------------------------------"
+echo "Target user: $APP_USER"
+echo "Install root: $BASE_INSTALL_DIR"
+echo
+
+migrate_legacy_layout
+
+SERVER_ALREADY_PRESENT=false
+CLIENT_ALREADY_PRESENT=false
+if [ -d "$SERVER_INSTALL_DIR" ] && [ -f "$SERVER_INSTALL_DIR/RemoteRelay.Server" ]; then
+  SERVER_ALREADY_PRESENT=true
+fi
+if [ -d "$CLIENT_INSTALL_DIR" ] && [ -f "$CLIENT_INSTALL_DIR/RemoteRelay" ]; then
+  CLIENT_ALREADY_PRESENT=true
+fi
+
+DO_INSTALL_SERVER=false
+DO_INSTALL_CLIENT=false
+
+if $SERVER_ALREADY_PRESENT || $CLIENT_ALREADY_PRESENT; then
+  echo "Existing installation detected."
+  if $SERVER_ALREADY_PRESENT; then
+    if prompt_yes_no "Update server component? [Y/n] " "Y"; then
+      DO_INSTALL_SERVER=true
+    fi
+  else
+    if prompt_yes_no "Install server component? [y/N] " "N"; then
+      DO_INSTALL_SERVER=true
     fi
   fi
 
-  echo "Client Installation Complete."
-  echo "The RemoteRelay Client is now configured to start automatically with your desktop session using XDG autostart."
-  if [[ "$ENABLE_KIOSK" =~ ^[Yy]$ ]]; then
-    echo "Kiosk mode enabled: X11 screen blanking and power saving settings will be disabled at session start."
+  if $CLIENT_ALREADY_PRESENT; then
+    if prompt_yes_no "Update client component? [Y/n] " "Y"; then
+      DO_INSTALL_CLIENT=true
+    fi
+  else
+    if prompt_yes_no "Install client component? [y/N] " "N"; then
+      DO_INSTALL_CLIENT=true
+    fi
   fi
-  echo "If the client does not start automatically, please check the file $DESKTOP_FILE_PATH"
-  echo "and ensure your desktop environment supports XDG autostart."
-  echo
-  echo "Troubleshooting autostart issues:"
-  echo "1. Test manually: $CLIENT_EXEC_PATH"
-  echo "2. Test with working directory: cd '$CLIENT_INSTALL_DIR' && '$CLIENT_EXEC_PATH'"
-  echo "3. Check autostart logs: journalctl --user-unit graphical-session.target"
-  echo "4. Verify desktop file: desktop-file-validate '$DESKTOP_FILE_PATH'"
-  echo
-
-  # Attempt to configure Wayfire screen blanking (Wayland)
-  WAYFIRE_INI="$USER_HOME/.config/wayfire.ini"
-  echo # Add a newline for better separation of messages
-  echo "--- Wayland/Wayfire Kiosk Configuration (Experimental) ---"
-
-  if [ -f "$WAYFIRE_INI" ]; then # Check if it's a regular file
-      if [ -s "$WAYFIRE_INI" ]; then # If it exists and is non-empty
-          echo "Attempting to configure Wayfire screen blanking in $WAYFIRE_INI..."
-          # AWK script content
-          AWK_SCRIPT='
-          BEGIN {
-              in_idle_section = 0;
-              dpms_key_processed_in_current_idle_section = 0;
-              screensaver_key_processed_in_current_idle_section = 0;
-              any_idle_section_found = 0;
-              current_section_lines_buffer = "";
-          }
-
-          function flush_current_section_buffer() {
-              if (in_idle_section) {
-                  print current_section_lines_buffer;
-                  if (!dpms_key_processed_in_current_idle_section) {
-                      print "dpms_timeout = 0";
-                  }
-                  if (!screensaver_key_processed_in_current_idle_section) {
-                      print "screensaver_timeout = 0";
-                  }
-              } else {
-                  if (current_section_lines_buffer != "") {
-                       print current_section_lines_buffer;
-                  }
-              }
-              current_section_lines_buffer = "";
-              in_idle_section = 0;
-              dpms_key_processed_in_current_idle_section = 0;
-              screensaver_key_processed_in_current_idle_section = 0;
-          }
-
-          /^\s*\[idle\]\s*$/ {
-              flush_current_section_buffer();
-              in_idle_section = 1;
-              any_idle_section_found = 1;
-              current_section_lines_buffer = $0;
-              next;
-          }
-
-          /^\s*\[.*\]\s*$/ {
-              flush_current_section_buffer();
-              current_section_lines_buffer = $0;
-              next;
-          }
-
-          {
-              if (in_idle_section) {
-                  if ($0 ~ /^\s*dpms_timeout\s*=/) {
-                      current_section_lines_buffer = (current_section_lines_buffer == "" ? "" : current_section_lines_buffer ORS) "dpms_timeout = 0";
-                      dpms_key_processed_in_current_idle_section = 1;
-                      next;
-                  }
-                  if ($0 ~ /^\s*screensaver_timeout\s*=/) {
-                      current_section_lines_buffer = (current_section_lines_buffer == "" ? "" : current_section_lines_buffer ORS) "screensaver_timeout = 0";
-                      screensaver_key_processed_in_current_idle_section = 1;
-                      next;
-                  }
-              }
-              current_section_lines_buffer = (current_section_lines_buffer == "" ? $0 : current_section_lines_buffer ORS $0);
-          }
-
-          END {
-              flush_current_section_buffer();
-              if (!any_idle_section_found) {
-                  print "[idle]";
-                  print "dpms_timeout = 0";
-                  print "screensaver_timeout = 0";
-              }
-          }
-          '
-          WAYFIRE_INI_TMP="$WAYFIRE_INI.tmp.$$"
-
-          if awk "$AWK_SCRIPT" "$WAYFIRE_INI" > "$WAYFIRE_INI_TMP"; then
-              if [ -s "$WAYFIRE_INI_TMP" ]; then
-                  mv "$WAYFIRE_INI_TMP" "$WAYFIRE_INI"
-                  echo "Wayfire configuration ($WAYFIRE_INI) attempt to disable screen blanking complete."
-                  echo "Please verify $WAYFIRE_INI, especially the [idle] section, to ensure settings (dpms_timeout=0, screensaver_timeout=0) are correct."
-              else
-                  echo "Warning: Processing $WAYFIRE_INI with awk resulted in an empty file. Original file preserved."
-                  rm -f "$WAYFIRE_INI_TMP"
-              fi
-          else
-              echo "Warning: awk command failed while processing $WAYFIRE_INI. Original file preserved."
-              rm -f "$WAYFIRE_INI_TMP"
-          fi
-      else # File exists but is empty
-          echo "Wayfire configuration file $WAYFIRE_INI is empty. Appending default kiosk settings for [idle] section."
-          {
-              echo "[idle]"
-              echo "dpms_timeout = 0"
-              echo "screensaver_timeout = 0"
-          } >> "$WAYFIRE_INI"
-          echo "Wayfire configuration ($WAYFIRE_INI) updated with default kiosk settings for idle."
-      fi
-  else # File does not exist
-      echo "Wayfire configuration file $WAYFIRE_INI not found. Skipping Wayland/Wayfire screen blanking setup."
-  fi
-  echo "--- End of Wayland/Wayfire Kiosk Configuration ---"
-  echo
-}
-
-# --- Perform Installations Based on User Choice ---
-SUMMARY_MESSAGE="Installation Summary:\\n"
-
-# Copy uninstall script to user's home directory
-UNINSTALL_SCRIPT_DEST="$USER_HOME/uninstall-remoteRelay.sh"
-if [ -f "$UNINSTALL_SCRIPT_SOURCE" ]; then
-  echo "Copying uninstall script to: $UNINSTALL_SCRIPT_DEST"
-  cp "$UNINSTALL_SCRIPT_SOURCE" "$UNINSTALL_SCRIPT_DEST"
-  chmod +x "$UNINSTALL_SCRIPT_DEST"
-  chown "$APP_USER:$APP_USER" "$UNINSTALL_SCRIPT_DEST" 2>/dev/null || true
-  echo "Uninstall script available at: $UNINSTALL_SCRIPT_DEST"
-  echo
 else
-  echo "Warning: Uninstall script not found in installer package."
+  if prompt_yes_no "Install server component? [Y/n] " "Y"; then
+    DO_INSTALL_SERVER=true
+  fi
+
+  if prompt_yes_no "Install client component? [Y/n] " "Y"; then
+    DO_INSTALL_CLIENT=true
+  fi
+
+  if ! $DO_INSTALL_SERVER && ! $DO_INSTALL_CLIENT; then
+    echo "Nothing selected. Exiting."
+    exit 0
+  fi
 fi
 
-if [[ "$INSTALL_TYPE" == "S" || "$INSTALL_TYPE" == "B" ]]; then
-  install_server
-  SUMMARY_MESSAGE+="  - RemoteRelay Server installed to $SERVER_INSTALL_DIR and configured as a systemd system service.\\n"
+SERVER_ADDRESS=""
+if $DO_INSTALL_CLIENT; then
+  local_default="localhost"
+  read -r -p "Server address for clients [$local_default]: " SERVER_ADDRESS
+  SERVER_ADDRESS=${SERVER_ADDRESS:-$local_default}
 fi
 
-if [[ "$INSTALL_TYPE" == "C" || "$INSTALL_TYPE" == "B" ]]; then
-  install_client
-  SUMMARY_MESSAGE+="  - RemoteRelay Client installed to $CLIENT_INSTALL_DIR, configured with Server Address $SERVER_ADDRESS, and set up for XDG autostart.\\n"
+if $DO_INSTALL_SERVER; then
+  update_server_files
 fi
+
+if $DO_INSTALL_CLIENT; then
+  update_client_files
+  update_server_details_host "$SERVER_ADDRESS"
+fi
+
+copy_uninstall_script
 
 chown -R "$APP_USER:$APP_USER" "$BASE_INSTALL_DIR"
 
-
-# Completion Message
-echo "----------------------------------------------------"
-echo " RemoteRelay Installation Finished! "
-echo "----------------------------------------------------"
-echo -e "$SUMMARY_MESSAGE"
-echo "Please check the output above for any warnings or errors."
-echo "System services (server, if installed) can be managed with:"
-echo "  systemctl [status|start|stop|restart] remote-relay-server.service"
-echo "The server service (if installed) will start automatically on system boot."
-echo "The client (if installed) is configured to start automatically with your desktop session via XDG autostart."
-echo "If the server was also installed on this machine, ensure the server is running before the client attempts to connect."
 echo
-if [ -f "$UNINSTALL_SCRIPT_DEST" ]; then
-  echo "To uninstall RemoteRelay, run: $UNINSTALL_SCRIPT_DEST"
-  echo "Note: Use sudo when uninstalling server components."
-fi
+echo "----------------------------------------------------"
+echo "Installation complete"
+echo "----------------------------------------------------"
+for line in "${SUMMARY[@]}"; do
+  echo "- $line"
+done
+
+echo
+echo "Server service: systemctl status $SERVER_SERVICE_NAME"
+echo "Client binary: $CLIENT_INSTALL_DIR/RemoteRelay"
+echo "Configuration lives in user-owned files at $BASE_INSTALL_DIR"
 
 exit 0
