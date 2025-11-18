@@ -1,11 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reactive.Linq;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using ReactiveUI;
 using RemoteRelay.Common;
 using RemoteRelay.MultiOutput;
@@ -15,154 +15,258 @@ namespace RemoteRelay;
 
 public class MainWindowViewModel : ViewModelBase
 {
-   private const int RetryIntervalSeconds = 5;
-   private System.Timers.Timer? _retryTimer;
-   private int _retryCountdown;
+    private const int RetryIntervalSeconds = 5;
+    private System.Timers.Timer? _retryTimer;
+    private int _retryCountdown;
+    private ClientConfig _clientConfig;
+    private const string ConfigFileName = "ClientConfig.json";
 
-   private string _serverStatusMessage = string.Empty;
-   public string ServerStatusMessage
-   {
-      get => _serverStatusMessage;
-      set => this.RaiseAndSetIfChanged(ref _serverStatusMessage, value);
-   }
+    private string _serverStatusMessage = string.Empty;
+    public string ServerStatusMessage
+    {
+        get => _serverStatusMessage;
+        set => this.RaiseAndSetIfChanged(ref _serverStatusMessage, value);
+    }
 
-   private ViewModelBase? _operationViewModel;
-   public ViewModelBase? OperationViewModel
-   {
-      get => _operationViewModel;
-      set
-      {
-         if (ReferenceEquals(_operationViewModel, value))
-         {
-            return;
-         }
+    private string _filterStatusMessage = string.Empty;
+    public string FilterStatusMessage
+    {
+        get => _filterStatusMessage;
+        set => this.RaiseAndSetIfChanged(ref _filterStatusMessage, value);
+    }
 
-         if (_operationViewModel is IDisposable disposable)
-         {
-            disposable.Dispose();
-         }
+    private ViewModelBase? _operationViewModel;
+    public ViewModelBase? OperationViewModel
+    {
+        get => _operationViewModel;
+        set
+        {
+            if (ReferenceEquals(_operationViewModel, value))
+            {
+                return;
+            }
 
-         this.RaiseAndSetIfChanged(ref _operationViewModel, value);
-         this.RaisePropertyChanged(nameof(IsOperationViewReady));
-      }
-   }
+            if (_operationViewModel is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
 
-   public bool IsOperationViewReady => _operationViewModel != null;
+            this.RaiseAndSetIfChanged(ref _operationViewModel, value);
+            this.RaisePropertyChanged(nameof(IsOperationViewReady));
+        }
+    }
 
-   public MainWindowViewModel()
-   {
-      Debug.WriteLine(Guid.NewGuid());
+    public bool IsOperationViewReady => _operationViewModel != null;
 
-      // Load ServerDetails.json
-      var serverInfo = JsonSerializer.Deserialize<ServerDetails>(File.ReadAllText("ServerDetails.json"));
-      var serverUri = new Uri($"http://{serverInfo.Host}:{serverInfo.Port}/relay");
-      SwitcherClient.InitializeInstance(serverUri);
+    public MainWindowViewModel()
+    {
+        Debug.WriteLine(Guid.NewGuid());
 
-      SwitcherClient.Instance.SettingsUpdates
-         .ObserveOn(RxApp.MainThreadScheduler)
-         .Subscribe(settings =>
-         {
-            ApplySettings(settings);
-            ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri} (settings refreshed at {DateTime.Now:T})";
-         });
+        LoadOrMigrateConfig();
 
-      // Subscribe to connection state changes
-      SwitcherClient.Instance._connectionStateChanged.Subscribe(isConnected =>
-      {
-         if (!isConnected)
-         {
-            OperationViewModel = null;
+        var serverUri = new Uri($"http://{_clientConfig.Host}:{_clientConfig.Port}/relay");
+        SwitcherClient.InitializeInstance(serverUri);
+
+        SwitcherClient.Instance.SettingsUpdates
+           .ObserveOn(RxApp.MainThreadScheduler)
+           .Subscribe(settings =>
+           {
+               ApplySettings(settings);
+               ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri} (settings refreshed at {DateTime.Now:T})";
+           });
+
+        // Subscribe to connection state changes
+        SwitcherClient.Instance._connectionStateChanged.Subscribe(isConnected =>
+        {
+            if (!isConnected)
+            {
+                OperationViewModel = null;
+                StartRetryTimer();
+            }
+        });
+
+        _ = InitializeConnectionAsync();
+    }
+
+    private void LoadOrMigrateConfig()
+    {
+        if (File.Exists(ConfigFileName))
+        {
+            try
+            {
+                var json = File.ReadAllText(ConfigFileName);
+                _clientConfig = JsonSerializer.Deserialize<ClientConfig>(json) ?? new ClientConfig();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error loading config: {ex.Message}");
+                _clientConfig = new ClientConfig();
+            }
+        }
+        else if (File.Exists("ServerDetails.json"))
+        {
+            try
+            {
+                // Migrate from ServerDetails
+                var serverInfo = JsonSerializer.Deserialize<ServerDetails>(File.ReadAllText("ServerDetails.json"));
+                _clientConfig = new ClientConfig
+                {
+                    Host = serverInfo.Host,
+                    Port = serverInfo.Port
+                };
+                SaveConfig();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error migrating config: {ex.Message}");
+                _clientConfig = new ClientConfig();
+            }
+        }
+        else
+        {
+            _clientConfig = new ClientConfig();
+            SaveConfig();
+        }
+    }
+
+    private void SaveConfig()
+    {
+        try
+        {
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var json = JsonSerializer.Serialize(_clientConfig, options);
+            File.WriteAllText(ConfigFileName, json);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error saving config: {ex.Message}");
+        }
+    }
+
+    private async Task InitializeConnectionAsync()
+    {
+        if (await SwitcherClient.Instance.ConnectAsync())
+        {
+            await OnConnected();
+        }
+        else
+        {
             StartRetryTimer();
-         }
-      });
+        }
+    }
 
-      _ = InitializeConnectionAsync();
-   }
+    private void UpdateServerStatusMessageForRetry()
+    {
+        ServerStatusMessage = $"Server offline. Trying to connect to {SwitcherClient.Instance.ServerUri}. Retrying in {_retryCountdown}s...";
+    }
 
-   private async Task InitializeConnectionAsync()
-   {
-      if (await SwitcherClient.Instance.ConnectAsync())
-      {
-         await OnConnected();
-      }
-      else
-      {
-         StartRetryTimer();
-      }
-   }
+    private void StartRetryTimer()
+    {
+        _retryTimer?.Stop();
+        _retryTimer?.Dispose();
 
-   private void UpdateServerStatusMessageForRetry()
-   {
-       ServerStatusMessage = $"Server offline. Trying to connect to {SwitcherClient.Instance.ServerUri}. Retrying in {_retryCountdown}s...";
-   }
+        _retryCountdown = RetryIntervalSeconds;
+        UpdateServerStatusMessageForRetry();
 
-   private void StartRetryTimer()
-   {
-       _retryTimer?.Stop();
-       _retryTimer?.Dispose();
+        _retryTimer = new System.Timers.Timer(1000); // 1 second interval
+        _retryTimer.Elapsed += async (sender, e) =>
+        {
+            if (_retryCountdown > 0)
+            {
+                _retryCountdown--;
+                UpdateServerStatusMessageForRetry();
+            }
 
-       _retryCountdown = RetryIntervalSeconds;
-       UpdateServerStatusMessageForRetry();
+            if (_retryCountdown <= 0)
+            {
+                _retryTimer?.Stop();
+                _retryTimer?.Dispose();
+                _retryTimer = null;
 
-       _retryTimer = new System.Timers.Timer(1000); // 1 second interval
-       _retryTimer.Elapsed += async (sender, e) =>
-       {
-           if (_retryCountdown > 0)
-           {
-               _retryCountdown--;
-               UpdateServerStatusMessageForRetry();
-           }
+                ServerStatusMessage = $"Server offline. Trying to connect to {SwitcherClient.Instance.ServerUri}. Retrying now...";
 
-           if (_retryCountdown <= 0)
-           {
-               _retryTimer?.Stop();
-               _retryTimer?.Dispose();
-               _retryTimer = null;
+                bool connected = await SwitcherClient.Instance.ConnectAsync();
+                if (connected)
+                {
+                    await OnConnected();
+                }
+                else
+                {
+                    StartRetryTimer();
+                }
+            }
+        };
+        _retryTimer.Start();
+    }
 
-               ServerStatusMessage = $"Server offline. Trying to connect to {SwitcherClient.Instance.ServerUri}. Retrying now...";
+    private async Task OnConnected()
+    {
+        _retryTimer?.Stop();
+        _retryTimer?.Dispose();
+        _retryTimer = null;
 
-               bool connected = await SwitcherClient.Instance.ConnectAsync();
-               if (connected)
-               {
-                   await OnConnected();
-               }
-               else
-               {
-                   StartRetryTimer();
-               }
-           }
-       };
-       _retryTimer.Start();
-   }
+        ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri}. Fetching settings...";
+        SwitcherClient.Instance.RequestSettings();
+        var settings = await SwitcherClient.Instance.GetSettingsAsync();
 
-   private async Task OnConnected()
-   {
-      _retryTimer?.Stop();
-      _retryTimer?.Dispose();
-      _retryTimer = null;
+        if (settings != null)
+        {
+            ApplySettings(settings.Value);
+            ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri}";
 
-      ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri}. Fetching settings...";
-      SwitcherClient.Instance.RequestSettings();
-      var settings = await SwitcherClient.Instance.GetSettingsAsync();
+            SwitcherClient.Instance.RequestStatus();
+        }
+        else
+        {
+            ServerStatusMessage = "Failed to retrieve valid settings from server.";
+            // OperationViewModel can be set to null since it's now nullable
+        }
+    }
 
-      if (settings != null)
-      {
-         ApplySettings(settings.Value);
-         ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri}";
+    private void ApplySettings(AppSettings settings)
+    {
+        // Auto-populate filters if empty
+        bool configUpdated = false;
+        if (_clientConfig.ShownInputs == null)
+        {
+            _clientConfig.ShownInputs = settings.Sources.ToList();
+            configUpdated = true;
+        }
+        if (_clientConfig.ShownOutputs == null)
+        {
+            _clientConfig.ShownOutputs = settings.Outputs.ToList();
+            configUpdated = true;
+        }
 
-         SwitcherClient.Instance.RequestStatus();
-      }
-      else
-      {
-         ServerStatusMessage = "Failed to retrieve valid settings from server.";
-         // OperationViewModel can be set to null since it's now nullable
-      }
-   }
+        if (configUpdated)
+        {
+            SaveConfig();
+        }
 
-   private void ApplySettings(AppSettings settings)
-   {
-      OperationViewModel = settings.Outputs.Count > 1
-         ? new MultiOutputViewModel(settings)
-         : new SingleOutputViewModel(settings);
-   }
+        // Filter routes
+        var filteredRoutes = settings.Routes.Where(r =>
+           (_clientConfig.ShownInputs?.Contains(r.SourceName) ?? true) &&
+           (_clientConfig.ShownOutputs?.Contains(r.OutputName) ?? true)
+        ).ToList();
+
+        var filteredSettings = settings;
+        filteredSettings.Routes = filteredRoutes;
+
+        // Determine filter status
+        bool isFiltered =
+           (_clientConfig.ShownInputs != null && _clientConfig.ShownInputs.Count < settings.Sources.Count) ||
+           (_clientConfig.ShownOutputs != null && _clientConfig.ShownOutputs.Count < settings.Outputs.Count);
+
+        FilterStatusMessage = isFiltered ? "Filtered" : "All";
+
+        OperationViewModel = filteredSettings.Outputs.Count > 1
+           ? new MultiOutputViewModel(filteredSettings, FilterStatusMessage)
+           : new SingleOutputViewModel(filteredSettings);
+    }
+
+    private class ServerDetails
+    {
+        public string Host { get; set; } = "localhost";
+        public int Port { get; set; } = 33101;
+    }
 }

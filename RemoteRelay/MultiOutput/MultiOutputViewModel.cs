@@ -17,9 +17,12 @@ public class MultiOutputViewModel : OperationViewModelBase
 	private readonly Dictionary<string, Color> _palette;
 	private SourceButtonViewModel? _activeSelection;
 
-	public MultiOutputViewModel(AppSettings settings)
+    public string FilterStatusMessage { get; }
+
+	public MultiOutputViewModel(AppSettings settings, string filterStatusMessage = "")
 		: base(settings)
 	{
+        FilterStatusMessage = filterStatusMessage;
 		Inputs = settings.Sources.Select(source => new SourceButtonViewModel(source)).ToList();
 		Outputs = settings.Outputs.Select(output => new SourceButtonViewModel(output)).ToList();
 
@@ -47,6 +50,7 @@ public class MultiOutputViewModel : OperationViewModelBase
 				.RefCount();
 
 	Disposables.Add(selectedInputStream
+		.ObserveOn(RxApp.MainThreadScheduler)
 		.Subscribe(current =>
 		{
 			if (_activeSelection != null && _activeSelection != current)
@@ -69,6 +73,7 @@ public class MultiOutputViewModel : OperationViewModelBase
 				{
 					RestoreInputState(input);
 				}
+				PushStatusMessage(string.Empty);
 			}
 		}));
 
@@ -322,14 +327,9 @@ public class MultiOutputViewModel : OperationViewModelBase
 	private IObservable<string> BuildCountdownMessage(string sourceName)
 	{
 		return Observable
-			.Range(0, TimeoutSeconds)
+			.Timer(TimeSpan.Zero, TimeSpan.FromSeconds(1))
+			.Take(TimeoutSeconds + 1)
 			.Select(x => TimeoutSeconds - x)
-			.Zip(
-				Observable
-					.Return(Unit.Default)
-					.Delay(TimeSpan.FromSeconds(1))
-					.Repeat(Math.Max(TimeoutSeconds - 1, 0))
-					.StartWith(Unit.Default),
-				(remaining, _) => $"Select output for {sourceName} – {remaining}s");
+			.Select(remaining => $"Select output for {sourceName} – {remaining}s");
 	}
 }

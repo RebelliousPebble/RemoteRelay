@@ -32,13 +32,22 @@ public class SourceButtonViewModel : ViewModelBase
                canExecute);
 
       _ = _state
-         .Select(state => state switch
+         .CombineLatest(this.WhenAnyValue(vm => vm.IsEnabled), (state, enabled) => (state, enabled))
+         .Select(tuple =>
          {
-            SourceState.Inactive => Colors.Gray,
-            SourceState.Selected => Colors.Red,
-            SourceState.Active => Colors.Red,
-            SourceState.Linked => _linkedColor,
-            _ => Colors.Pink
+            if (!tuple.enabled)
+            {
+               return Colors.DarkSlateGray;
+            }
+
+            return tuple.state switch
+            {
+               SourceState.Inactive => Colors.Gray,
+               SourceState.Selected => Colors.Red,
+               SourceState.Active => Colors.Red,
+               SourceState.Linked => _linkedColor,
+               _ => Colors.Pink
+            };
          })
          .ObserveOn(RxApp.MainThreadScheduler)
          .Subscribe(x => BackgroundColor = new SolidColorBrush(x));
