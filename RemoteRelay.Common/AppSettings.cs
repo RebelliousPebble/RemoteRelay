@@ -93,8 +93,8 @@ public struct AppSettings
         // Sources and Outputs are computed properties.
     }
 
-    public IReadOnlyCollection<string> Sources => Routes.Select(x => x.SourceName).Distinct().ToArray();
-    public IReadOnlyCollection<string> Outputs => Routes.Select(x => x.OutputName).Distinct().ToArray();
+    public IReadOnlyCollection<string> Sources => Routes?.Select(x => x.SourceName).Distinct().ToArray() ?? Array.Empty<string>();
+    public IReadOnlyCollection<string> Outputs => Routes?.Select(x => x.OutputName).Distinct().ToArray() ?? Array.Empty<string>();
 
 
    // Properties moved up to group them, constructor added above.

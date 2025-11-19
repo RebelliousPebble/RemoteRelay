@@ -4,6 +4,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading.Tasks; // Added for TaskCompletionSource
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 using RemoteRelay.Common;
 
 namespace RemoteRelay;
@@ -12,6 +13,7 @@ public class SwitcherClient
 {
    private static SwitcherClient? _instance;
    private static readonly object _lock = new();
+   private readonly object _requestLock = new();
    private readonly HubConnection _connection;
    private AppSettings? _settings;
    private Uri _hubUri;
@@ -29,6 +31,10 @@ public class SwitcherClient
          .WithAutomaticReconnect()
          .WithKeepAliveInterval(TimeSpan.FromSeconds(10))
          .WithUrl(hubUri)
+         .AddJsonProtocol(options =>
+         {
+            options.PayloadSerializerOptions.PropertyNameCaseInsensitive = true;
+         })
          .Build();
 
       // Handle connection state changes
@@ -147,11 +153,14 @@ public class SwitcherClient
       try
       {
          // Reset TCS for cases where settings might be requested again
-         if (_settingsTcs.Task.IsCompleted)
+         lock (_requestLock)
          {
-            _settingsTcs = new TaskCompletionSource<AppSettings?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (_settingsTcs.Task.IsCompleted)
+            {
+               _settingsTcs = new TaskCompletionSource<AppSettings?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
          }
-         _settings = null; // Clear previous settings before requesting new ones
+         // _settings = null; // Removed to prevent null reference exceptions in UI binding
          _connection.SendAsync("GetConfiguration");
       }
       catch (Exception ex)
@@ -163,7 +172,10 @@ public class SwitcherClient
 
    public Task<AppSettings?> GetSettingsAsync()
    {
-      return _settingsTcs.Task;
+      lock (_requestLock)
+      {
+         return _settingsTcs.Task;
+      }
    }
 
    private Task OnConnectionClosed(Exception? exception)

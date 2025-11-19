@@ -3,13 +3,10 @@
   "Port": 33101,
   "ShownInputs": [
     "Input 1",
-    "Input 2",
-    "Input 3",
-    "Input 4"
+    "Input 2"
   ],
   "ShownOutputs": [
     "Output 1",
-    "Output 2",
-    "Output 3"
+    "Output 2"
   ]
 }
