@@ -77,6 +77,7 @@ public struct AppSettings
     public bool ShowIpOnScreen { get; set; }
     public bool Logging { get; set; }
     public string LogoFile { get; set; }
+    public bool UseMockGpio { get; set; }
 
     // Parameterless constructor for struct initialization
     public AppSettings()

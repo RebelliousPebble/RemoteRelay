@@ -14,10 +14,18 @@ namespace RemoteRelay.Server;
 
 public class Program
 {
-   // Helper method to determine GPIO environment, similar to SwitcherState
-   private static bool IsGpiEnvironment()
+   // Helper method to determine GPIO environment
+   private static bool IsGpiEnvironment(bool useMockGpio)
    {
-      return Environment.OSVersion.Platform == PlatformID.Unix;
+      if (useMockGpio)
+         return false;
+
+      if (Environment.OSVersion.Platform != PlatformID.Unix)
+         return false;
+
+      // Check if GPIO is actually available on the system
+      // On Linux, GPIO hardware is typically exposed via /sys/class/gpio
+      return Directory.Exists("/sys/class/gpio");
    }
 
    public static void Main(string[] args)
@@ -52,10 +60,10 @@ public class Program
                return;
             }
 
-            if (IsGpiEnvironment())
+            if (IsGpiEnvironment(false))
                gpioController = new GpioController();
             else
-               gpioController = new GpioController(new MockGpioDriver()); // Matched SwitcherState
+               gpioController = new GpioController(new MockGpioDriver());
 
             if (!gpioController!.IsPinOpen(pin))
             {

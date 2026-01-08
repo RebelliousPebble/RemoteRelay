@@ -440,7 +440,15 @@ public class SwitcherState : IDisposable
 
    private bool IsGpiEnvironment()
    {
-      return Environment.OSVersion.Platform == PlatformID.Unix;
+      if (_settings.UseMockGpio)
+         return false;
+
+      if (Environment.OSVersion.Platform != PlatformID.Unix)
+         return false;
+
+      // Check if GPIO is actually available on the system
+      // On Linux, GPIO hardware is typically exposed via /sys/class/gpio
+      return Directory.Exists("/sys/class/gpio");
    }
 
    private static Dictionary<string, string> GeneratePalette(IReadOnlyCollection<string> sources)
