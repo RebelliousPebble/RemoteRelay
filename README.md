@@ -63,11 +63,8 @@ For the easiest setup on a Raspberry Pi, please see the 'Easy Installation (Reco
 
 ## To-Do
 - Add support for sending a TCP message to a different service on switch (this could be for triggering a Hot Spare switch in Zetta, a Smart Transfer in Myriad, or for updating digital studio signage)
-- Add support for multiple outputs (Allowing Studio 1 to be routed to Output 1, Studio 2 to Output 2 etc from the same screen)
 - Add support for multiple servers (Because one relay HAT isn't enough!)
 - Add a pin lock so the system can only be used by those who know a code (ie presenters only)
-- Automatic installer script (Completed - see Easy Installation section)
-- Automated releases with GitHub Actions (Implemented)
 
 ## Inactive Relay Feature
 

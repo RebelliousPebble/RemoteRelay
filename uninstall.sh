@@ -27,6 +27,7 @@ SERVER_INSTALL_DIR="$BASE_INSTALL_DIR/server"
 CLIENT_INSTALL_DIR="$BASE_INSTALL_DIR/client"
 LEGACY_BASE_DIR="$USER_HOME/.local/share/RemoteRelay"
 AUTOSTART_DESKTOP="$USER_HOME/.config/autostart/remote-relay-client.desktop"
+DESKTOP_SHORTCUT="$USER_HOME/Desktop/RemoteRelay.desktop"
 WAYFIRE_INI="$USER_HOME/.config/wayfire.ini"
 
 SERVER_PRESENT=false
@@ -39,6 +40,10 @@ if [ -d "$SERVER_INSTALL_DIR" ] && [ -f "$SERVER_INSTALL_DIR/RemoteRelay.Server"
 fi
 
 if [ -d "$CLIENT_INSTALL_DIR" ] && [ -f "$CLIENT_INSTALL_DIR/RemoteRelay" ]; then
+    CLIENT_PRESENT=true
+fi
+
+if [ -f "$DESKTOP_SHORTCUT" ]; then
     CLIENT_PRESENT=true
 fi
 
@@ -67,6 +72,9 @@ if $SERVER_PRESENT; then
 fi
 if $CLIENT_PRESENT; then
     echo "- Client files located at $CLIENT_INSTALL_DIR"
+    if [ -f "$DESKTOP_SHORTCUT" ]; then
+        echo "- Desktop shortcut at $DESKTOP_SHORTCUT"
+    fi
 fi
 if $LEGACY_PRESENT; then
     echo "- Legacy installation detected at $LEGACY_BASE_DIR"
@@ -100,7 +108,7 @@ if $SERVER_PRESENT || $SERVICE_PRESENT; then
     fi
 fi
 
-if $CLIENT_PRESENT || [ -f "$AUTOSTART_DESKTOP" ]; then
+if $CLIENT_PRESENT || [ -f "$AUTOSTART_DESKTOP" ] || [ -f "$DESKTOP_SHORTCUT" ]; then
     if ask_yes_no "Remove the RemoteRelay client component? [Y/n] " "Y"; then
         REMOVE_CLIENT=true
     fi
@@ -151,6 +159,14 @@ remove_client_autostart() {
         echo "Removing desktop autostart entry $AUTOSTART_DESKTOP"
         rm -f "$AUTOSTART_DESKTOP"
         SUMMARY+=("Removed XDG autostart entry")
+    fi
+}
+
+remove_desktop_shortcut() {
+    if [ -f "$DESKTOP_SHORTCUT" ]; then
+        echo "Removing desktop shortcut $DESKTOP_SHORTCUT"
+        rm -f "$DESKTOP_SHORTCUT"
+        SUMMARY+=("Removed desktop shortcut")
     fi
 }
 
@@ -218,6 +234,7 @@ remove_server_files
 
 if $REMOVE_CLIENT; then
     remove_client_autostart
+    remove_desktop_shortcut
     if [ -f "$WAYFIRE_INI" ]; then
         clean_wayfire_autostart
         if ask_yes_no "Remove Wayfire kiosk settings (screen blanking overrides)? [Y/n] " "Y"; then

@@ -62,10 +62,17 @@ preserve_file_if_exists() {
   local file_path="$1"
   local tmp_var="$2"
   if [ -f "$file_path" ]; then
-    local tmp_backup
-    tmp_backup=$(mktemp)
-    cp "$file_path" "$tmp_backup"
-    printf -v "$tmp_var" '%s' "$tmp_backup"
+    local backup_dir="$USER_HOME/.remoterelay-backup-$$"
+    mkdir -p "$backup_dir"
+    local filename=$(basename "$file_path")
+    local backup_path="$backup_dir/$filename"
+    if cp "$file_path" "$backup_path"; then
+      echo "  Preserving existing config: $filename"
+      printf -v "$tmp_var" '%s' "$backup_path"
+    else
+      echo "  Warning: Failed to preserve $filename" >&2
+      printf -v "$tmp_var" '%s' ""
+    fi
   else
     printf -v "$tmp_var" '%s' ""
   fi
@@ -75,7 +82,20 @@ restore_preserved_file() {
   local backup_path="$1"
   local dest_path="$2"
   if [ -n "$backup_path" ] && [ -f "$backup_path" ]; then
-    mv "$backup_path" "$dest_path"
+    local filename=$(basename "$dest_path")
+    if cp "$backup_path" "$dest_path"; then
+      echo "  Restored existing config: $filename"
+      chown "$APP_USER:$APP_USER" "$dest_path"
+    else
+      echo "  Warning: Failed to restore $filename" >&2
+    fi
+  fi
+}
+
+cleanup_backup_dir() {
+  local backup_dir="$USER_HOME/.remoterelay-backup-$$"
+  if [ -d "$backup_dir" ]; then
+    rm -rf "$backup_dir"
   fi
 }
 
@@ -132,6 +152,47 @@ EOF
   systemctl enable "$SERVER_SERVICE_NAME"
 }
 
+clean_wayfire_duplicates() {
+  local wayfire_ini="$1"
+  if [ ! -f "$wayfire_ini" ]; then
+    return
+  fi
+  
+  local tmp="$wayfire_ini.clean.$$"
+  
+  # Remove all existing remote-relay-client entries and duplicate idle settings
+  awk '
+    BEGIN { in_autostart = 0; in_idle = 0; }
+    /^[ \t]*\[autostart\][ \t]*$/ {
+      in_autostart = 1; in_idle = 0; print; next;
+    }
+    /^[ \t]*\[idle\][ \t]*$/ {
+      in_idle = 1; in_autostart = 0; print; next;
+    }
+    /^[ \t]*\[/ {
+      in_autostart = 0; in_idle = 0; print; next;
+    }
+    {
+      if (in_autostart && $0 ~ /^[ \t]*remote-relay-client[ \t]*=/) {
+        next;
+      }
+      if (in_idle && ($0 ~ /^[ \t]*dpms_timeout[ \t]*=/ || $0 ~ /^[ \t]*screensaver_timeout[ \t]*=/)) {
+        next;
+      }
+      print;
+    }
+  ' "$wayfire_ini" > "$tmp"
+  
+  if [ -s "$tmp" ]; then
+    mv "$tmp" "$wayfire_ini"
+    chown "$APP_USER:$APP_USER" "$wayfire_ini"
+    echo "Cleaned duplicate entries from wayfire.ini"
+  else
+    echo "Warning: Failed to clean wayfire.ini" >&2
+    rm -f "$tmp"
+  fi
+}
+
 configure_wayfire_idle() {
   local wayfire_ini="$1"
   local tmp="$wayfire_ini.tmp.$$"
@@ -140,14 +201,14 @@ configure_wayfire_idle() {
     BEGIN {
       in_idle = 0; seen_idle = 0; wrote_dpms = 0; wrote_screen = 0;
     }
-    /^\s*\[idle\]\s*$/ {
+    /^[ \t]*\[idle\][ \t]*$/ {
       if (in_idle) {
         if (!wrote_dpms) print "dpms_timeout = 0";
         if (!wrote_screen) print "screensaver_timeout = 0";
       }
       print; in_idle = 1; seen_idle = 1; wrote_dpms = 0; wrote_screen = 0; next;
     }
-    /^\s*\[/ {
+    /^[ \t]*\[/ {
       if (in_idle) {
         if (!wrote_dpms) print "dpms_timeout = 0";
         if (!wrote_screen) print "screensaver_timeout = 0";
@@ -157,11 +218,17 @@ configure_wayfire_idle() {
     }
     {
       if (in_idle) {
-        if ($0 ~ /^\s*dpms_timeout\s*=/) {
-          print "dpms_timeout = 0"; wrote_dpms = 1; next;
+        if ($0 ~ /^[ \t]*dpms_timeout[ \t]*=/) {
+          if (!wrote_dpms) {
+            print "dpms_timeout = 0"; wrote_dpms = 1;
+          }
+          next;
         }
-        if ($0 ~ /^\s*screensaver_timeout\s*=/) {
-          print "screensaver_timeout = 0"; wrote_screen = 1; next;
+        if ($0 ~ /^[ \t]*screensaver_timeout[ \t]*=/) {
+          if (!wrote_screen) {
+            print "screensaver_timeout = 0"; wrote_screen = 1;
+          }
+          next;
         }
       }
       print;
@@ -186,20 +253,23 @@ ensure_wayfire_autostart() {
 
   awk -v entry="$command_line" '
     BEGIN { in_autostart = 0; seen_autostart = 0; wrote_entry = 0; key = "remote-relay-client"; }
-    /^\s*\[autostart\]\s*$/ {
+    /^[ \t]*\[autostart\][ \t]*$/ {
       if (in_autostart && !wrote_entry) print key " = " entry;
       print; in_autostart = 1; seen_autostart = 1; wrote_entry = 0; next;
     }
-    /^\s*\[/ {
+    /^[ \t]*\[/ {
       if (in_autostart && !wrote_entry) print key " = " entry;
       in_autostart = 0;
       print; next;
     }
     {
       if (in_autostart) {
-        if ($0 ~ "^\\s*" key "\\s*=") {
-          if (!wrote_entry) print key " = " entry;
-          wrote_entry = 1; next;
+        if ($0 ~ "^[ \\t]*" key "[ \\t]*=") {
+          if (!wrote_entry) {
+            print key " = " entry;
+            wrote_entry = 1;
+          }
+          next;
         }
       }
       print;
@@ -216,7 +286,7 @@ ensure_wayfire_autostart() {
 }
 
 configure_wayfire() {
-  local client_exec="$1"
+  local launcher_script="$1"
   local disable_idle="${2:-false}"
   local wayfire_ini="$USER_HOME/.config/wayfire.ini"
   ensure_dir_owned_by_user "$USER_HOME/.config"
@@ -225,26 +295,40 @@ configure_wayfire() {
     chown "$APP_USER:$APP_USER" "$wayfire_ini"
   fi
 
-  ensure_wayfire_autostart "$wayfire_ini" "$client_exec"
+  # Clean up any duplicate entries from previous installs
+  clean_wayfire_duplicates "$wayfire_ini"
+
+  # Build the command to run
+  # Wayfire runs commands with sh, so just call the launcher script directly
+  # Screen blanking is handled by [idle] section, not xset
+  local autostart_cmd="$launcher_script"
+
+  ensure_wayfire_autostart "$wayfire_ini" "$autostart_cmd"
   if [ "$disable_idle" = "true" ]; then
     configure_wayfire_idle "$wayfire_ini"
   fi
   chown "$APP_USER:$APP_USER" "$wayfire_ini"
+  echo "Wayfire autostart configured in $wayfire_ini"
 }
 
 create_autostart_desktop() {
-  local client_exec="$1"
+  local launcher_script="$1"
   local enable_kiosk="$2"
   local desktop_path="$USER_HOME/.config/autostart/remote-relay-client.desktop"
+  
+  # Note: This XDG autostart is for legacy X11 compatibility only.
+  # Wayfire (default on modern RPi OS) uses wayfire.ini [autostart] instead.
+  
+  # Ensure directories exist with proper permissions
+  ensure_dir_owned_by_user "$USER_HOME/.config"
   ensure_dir_owned_by_user "$USER_HOME/.config/autostart"
 
   local exec_line
   if [ "$enable_kiosk" = "true" ]; then
-    local escaped_exec
-    escaped_exec=$(printf '%s' "$client_exec" | sed 's/"/\\"/g')
-    exec_line="sh -c 'xset s noblank && xset s off && xset -dpms && \"$escaped_exec\"'"
+    # For XDG autostart, use simple format - no nested quotes
+    exec_line="sh -c 'xset s noblank; xset s off; xset -dpms; exec $launcher_script'"
   else
-    exec_line="\"$client_exec\""
+    exec_line="$launcher_script"
   fi
 
   cat > "$desktop_path" <<EOF
@@ -256,8 +340,72 @@ Path=$CLIENT_INSTALL_DIR
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
-  chmod 755 "$desktop_path"
+  chmod 644 "$desktop_path"
   chown "$APP_USER:$APP_USER" "$desktop_path"
+
+  echo "XDG autostart desktop entry created (for X11 compatibility)"
+}
+
+create_client_launcher() {
+  local client_exec="$1"
+  local launcher_script="$CLIENT_INSTALL_DIR/start-client.sh"
+  
+  cat > "$launcher_script" <<'EOF'
+#!/bin/bash
+# RemoteRelay Client Launcher Script
+# Sets up environment and launches the client
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Change to the client directory
+cd "$SCRIPT_DIR" || exit 1
+
+# Enable logging for debugging autostart issues
+exec >> "$SCRIPT_DIR/client.log" 2>&1
+echo "[$(date)] Starting RemoteRelay Client"
+echo "Working directory: $(pwd)"
+echo "Script directory: $SCRIPT_DIR"
+echo "Display: $DISPLAY"
+echo "Wayland display: $WAYLAND_DISPLAY"
+echo "XDG_SESSION_TYPE: $XDG_SESSION_TYPE"
+
+# Wait a bit for the desktop environment to fully initialize
+sleep 3
+
+# Launch the client
+echo "[$(date)] Launching RemoteRelay binary"
+exec "$SCRIPT_DIR/RemoteRelay"
+EOF
+
+  chmod +x "$launcher_script"
+  chown "$APP_USER:$APP_USER" "$launcher_script"
+  echo "$launcher_script"
+}
+
+create_desktop_shortcut() {
+  local launcher_script="$1"
+  local desktop_dir="$USER_HOME/Desktop"
+  local desktop_shortcut="$desktop_dir/RemoteRelay.desktop"
+  
+  # Ensure Desktop directory exists
+  if [ ! -d "$desktop_dir" ]; then
+    ensure_dir_owned_by_user "$desktop_dir"
+  fi
+
+  cat > "$desktop_shortcut" <<EOF
+[Desktop Entry]
+Type=Application
+Name=RemoteRelay Client
+Comment=Launch RemoteRelay Client
+Exec="$launcher_script"
+Path=$CLIENT_INSTALL_DIR
+Icon=applications-multimedia
+Terminal=false
+Categories=AudioVideo;Audio;
+EOF
+  chmod 755 "$desktop_shortcut"
+  chown "$APP_USER:$APP_USER" "$desktop_shortcut"
 }
 
 migrate_legacy_layout() {
@@ -295,6 +443,7 @@ update_server_files() {
 
   ensure_dir_owned_by_user "$SERVER_INSTALL_DIR"
 
+  echo "Preserving existing server configuration files..."
   local backup_config backup_appsettings backup_devsettings
   preserve_file_if_exists "$SERVER_INSTALL_DIR/config.json" backup_config
   preserve_file_if_exists "$SERVER_INSTALL_DIR/appsettings.json" backup_appsettings
@@ -304,10 +453,12 @@ update_server_files() {
     server_restarted=1
   fi
 
+  echo "Installing new server files..."
   find "$SERVER_INSTALL_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
   cp -a "$SERVER_FILES_SOURCE_DIR/." "$SERVER_INSTALL_DIR/"
   chmod +x "$SERVER_INSTALL_DIR/RemoteRelay.Server"
 
+  echo "Restoring preserved configuration files..."
   restore_preserved_file "$backup_config" "$SERVER_INSTALL_DIR/config.json"
   restore_preserved_file "$backup_appsettings" "$SERVER_INSTALL_DIR/appsettings.json"
   restore_preserved_file "$backup_devsettings" "$SERVER_INSTALL_DIR/appsettings.Development.json"
@@ -353,27 +504,39 @@ update_client_files() {
 
   ensure_dir_owned_by_user "$CLIENT_INSTALL_DIR"
 
-  local backup_server_details
+  echo "Preserving existing client configuration files..."
+  local backup_server_details backup_client_config
   preserve_file_if_exists "$CLIENT_INSTALL_DIR/ServerDetails.json" backup_server_details
+  preserve_file_if_exists "$CLIENT_INSTALL_DIR/ClientConfig.json" backup_client_config
 
+  echo "Installing new client files..."
   find "$CLIENT_INSTALL_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
   cp -a "$CLIENT_FILES_SOURCE_DIR/." "$CLIENT_INSTALL_DIR/"
   chmod +x "$CLIENT_INSTALL_DIR/RemoteRelay"
 
+  echo "Restoring preserved configuration files..."
   restore_preserved_file "$backup_server_details" "$CLIENT_INSTALL_DIR/ServerDetails.json"
+  restore_preserved_file "$backup_client_config" "$CLIENT_INSTALL_DIR/ClientConfig.json"
   chown -R "$APP_USER:$APP_USER" "$CLIENT_INSTALL_DIR"
 
-  local client_exec="$CLIENT_INSTALL_DIR/RemoteRelay"
   local enable_kiosk="false"
   if prompt_yes_no "Disable screen blanking for the client display? [Y/n] " "Y"; then
     enable_kiosk="true"
   fi
 
-  create_autostart_desktop "$client_exec" "$enable_kiosk"
-  configure_wayfire "$client_exec" "$enable_kiosk"
+  echo "Creating launcher script..."
+  local launcher_script
+  launcher_script=$(create_client_launcher "$CLIENT_INSTALL_DIR/RemoteRelay")
+
+  echo "Configuring autostart..."
+  # Wayfire (Wayland) is the default on modern RPi OS - configure it first
+  configure_wayfire "$launcher_script" "$enable_kiosk"
+  # Also create XDG autostart for X11 compatibility (legacy)
+  create_autostart_desktop "$launcher_script" "$enable_kiosk"
+  create_desktop_shortcut "$launcher_script"
 
   if [ "$enable_kiosk" = "true" ]; then
-    echo "Kiosk mode enabled: desktop environments will keep the display awake before launching the client."
+    echo "Kiosk mode enabled: display will stay awake."
   else
     echo "Kiosk mode skipped: screen blanking settings unchanged."
   fi
@@ -383,6 +546,7 @@ update_client_files() {
     client_summary+=" with kiosk screen blanking disabled"
   fi
   SUMMARY+=("$client_summary")
+  SUMMARY+=("Desktop shortcut created at $USER_HOME/Desktop/RemoteRelay.desktop")
 }
 
 update_server_details_host() {
@@ -492,6 +656,8 @@ fi
 copy_uninstall_script
 
 chown -R "$APP_USER:$APP_USER" "$BASE_INSTALL_DIR"
+
+cleanup_backup_dir
 
 echo
 echo "----------------------------------------------------"
