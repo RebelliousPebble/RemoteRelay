@@ -26,7 +26,7 @@
             BorderBrush="Gray"
             BorderThickness="5">
         <Viewbox Stretch="Uniform">
-            <TextBlock Text="{Binding SourceName}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="10" />
+            <TextBlock Text="{Binding SourceName}" Foreground="{Binding ForegroundColor}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="10" />
         </Viewbox>
     </Button>
 

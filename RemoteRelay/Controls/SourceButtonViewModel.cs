@@ -13,6 +13,7 @@ public class SourceButtonViewModel : ViewModelBase
 {
    private readonly BehaviorSubject<SourceState> _state = new(SourceState.Inactive);
    private SolidColorBrush _backgroundColor = new(Colors.Gray);
+   private SolidColorBrush _foregroundColor = new(Colors.White);
    private Color _linkedColor = Colors.Gray;
    private bool _isEnabled = true;
 
@@ -37,10 +38,10 @@ public class SourceButtonViewModel : ViewModelBase
          {
             if (!tuple.enabled)
             {
-               return Colors.DarkSlateGray;
+               return (Background: Colors.DarkSlateGray, Foreground: Colors.DimGray);
             }
 
-            return tuple.state switch
+            var bg = tuple.state switch
             {
                SourceState.Inactive => Colors.Gray,
                SourceState.Selected => Colors.Red,
@@ -48,9 +49,13 @@ public class SourceButtonViewModel : ViewModelBase
                SourceState.Linked => _linkedColor,
                _ => Colors.Pink
             };
+            return (Background: bg, Foreground: Colors.White);
          })
          .ObserveOn(RxApp.MainThreadScheduler)
-         .Subscribe(x => BackgroundColor = new SolidColorBrush(x));
+         .Subscribe(x => {
+             BackgroundColor = new SolidColorBrush(x.Background);
+             ForegroundColor = new SolidColorBrush(x.Foreground);
+         });
       ;
    }
 
@@ -64,6 +69,12 @@ public class SourceButtonViewModel : ViewModelBase
    {
       get => _backgroundColor;
       set => this.RaiseAndSetIfChanged(ref _backgroundColor, value);
+   }
+
+   public SolidColorBrush ForegroundColor
+   {
+      get => _foregroundColor;
+      set => this.RaiseAndSetIfChanged(ref _foregroundColor, value);
    }
 
    public bool IsEnabled
