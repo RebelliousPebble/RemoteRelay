@@ -35,6 +35,13 @@ public class MainWindowViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _filterStatusMessage, value);
     }
 
+    private string _updateMessage = string.Empty;
+    public string UpdateMessage
+    {
+        get => _updateMessage;
+        set => this.RaiseAndSetIfChanged(ref _updateMessage, value);
+    }
+
     private ViewModelBase? _operationViewModel;
     public ViewModelBase? OperationViewModel
     {
@@ -68,11 +75,29 @@ public class MainWindowViewModel : ViewModelBase
         SwitcherClient.InitializeInstance(serverUri);
 
         SwitcherClient.Instance.SettingsUpdates
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(settings =>
+            {
+                ApplySettings(settings);
+                ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri} (settings refreshed at {DateTime.Now:T})";
+            });
+
+        SwitcherClient.Instance.CompatibilityUpdates
            .ObserveOn(RxApp.MainThreadScheduler)
-           .Subscribe(settings =>
+           .Subscribe(status =>
            {
-               ApplySettings(settings);
-               ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri} (settings refreshed at {DateTime.Now:T})";
+               switch (status)
+               {
+                   case CompatibilityStatus.ClientOutdated:
+                       UpdateMessage = "Client Update Available - Please Run Update";
+                       break;
+                   case CompatibilityStatus.ServerOutdated:
+                       UpdateMessage = "Server Version Unknown/Outdated";
+                       break;
+                   default:
+                       UpdateMessage = string.Empty;
+                       break;
+               }
            });
 
         // Subscribe to connection state changes

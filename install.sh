@@ -9,6 +9,20 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+install_dependencies() {
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "Checking dependencies..."
+    if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+       echo "Installing dependencies (curl, jq)..."
+       apt-get update -qq && apt-get install -y -qq curl jq
+    fi
+  else
+    echo "Warning: apt-get not found. Please ensure curl and jq are installed manually."
+  fi
+}
+
+install_dependencies
+
 APP_USER="${SUDO_USER:-}"
 if [ -z "$APP_USER" ] || [ "$APP_USER" = "root" ]; then
   echo "Error: Unable to determine the non-root user running sudo." >&2
@@ -580,6 +594,18 @@ copy_uninstall_script() {
   fi
 }
 
+copy_update_script() {
+  ensure_dir_owned_by_user "$BASE_INSTALL_DIR"
+  if [ -f "$SCRIPT_DIR/update.sh" ]; then
+    cp "$SCRIPT_DIR/update.sh" "$BASE_INSTALL_DIR/update.sh"
+    chmod +x "$BASE_INSTALL_DIR/update.sh"
+    chown "$APP_USER:$APP_USER" "$BASE_INSTALL_DIR/update.sh"
+    SUMMARY+=("Update script installed at $BASE_INSTALL_DIR/update.sh")
+  else
+    echo "Warning: update script not found in installer payload." >&2
+  fi
+}
+
 echo "----------------------------------------------------"
 echo "$(bold "RemoteRelay Installer")"
 echo "----------------------------------------------------"
@@ -654,6 +680,7 @@ if $DO_INSTALL_CLIENT; then
 fi
 
 copy_uninstall_script
+copy_update_script
 
 chown -R "$APP_USER:$APP_USER" "$BASE_INSTALL_DIR"
 

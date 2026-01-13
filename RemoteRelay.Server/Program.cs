@@ -30,6 +30,11 @@ public class Program
 
    public static void Main(string[] args)
    {
+      if (args.Length > 0 && args[0] == "--version")
+      {
+         Console.WriteLine(RemoteRelay.Common.VersionHelper.GetVersion());
+         return;
+      }
       if (args.Length == 5 && args[0] == "set-inactive-relay" && args[1] == "--pin" && args[3] == "--state")
       {
          GpioController? gpioController = null;

@@ -30,6 +30,7 @@ STARTUP_SCRIPT_SOURCE="install.sh"
 STARTUP_SCRIPT_DEST_IN_ARCHIVE="install.sh"
 UNINSTALL_SCRIPT_SOURCE="uninstall.sh"
 UNINSTALL_SCRIPT_DEST_IN_ARCHIVE="uninstall.sh"
+UPDATE_SCRIPT_SOURCE="update.sh"
 
 
 # --- Helper Functions ---
@@ -133,6 +134,16 @@ else
     sed -i 's/\r$//' "${MAKSELF_STAGE_DIR}/${UNINSTALL_SCRIPT_DEST_IN_ARCHIVE}"
     dos2unix "${MAKSELF_STAGE_DIR}/${UNINSTALL_SCRIPT_DEST_IN_ARCHIVE}" 2>/dev/null || true
     chmod +x "${MAKSELF_STAGE_DIR}/${UNINSTALL_SCRIPT_DEST_IN_ARCHIVE}"
+fi
+
+echo "  Copying and preparing update script (${UPDATE_SCRIPT_SOURCE})..."
+if [ -f "${UPDATE_SCRIPT_SOURCE}" ]; then
+    cp "${UPDATE_SCRIPT_SOURCE}" "${MAKSELF_STAGE_DIR}/update.sh"
+    sed -i 's/\r$//' "${MAKSELF_STAGE_DIR}/update.sh"
+    dos2unix "${MAKSELF_STAGE_DIR}/update.sh" 2>/dev/null || true
+    chmod +x "${MAKSELF_STAGE_DIR}/update.sh"
+else
+    echo "Warning: Update script '${UPDATE_SCRIPT_SOURCE}' not found."
 fi
 
 # Verify the install script is properly formatted
