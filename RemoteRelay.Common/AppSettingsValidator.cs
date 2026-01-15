@@ -42,7 +42,7 @@ public static class AppSettingsValidator
             return;
         }
 
-    var seen = new HashSet<(string Source, string Output)>(new RouteEqualityComparer());
+        var seen = new HashSet<(string Source, string Output)>(new RouteEqualityComparer());
         foreach (var route in settings.Routes)
         {
             if (string.IsNullOrWhiteSpace(route.SourceName))
@@ -57,7 +57,11 @@ public static class AppSettingsValidator
 
             if (route.RelayPin <= 0)
             {
-                errors.Add($"Route {route.SourceName}->{route.OutputName} has an invalid relay pin '{route.RelayPin}'.");
+                errors.Add($"Route {route.SourceName}->{route.OutputName} has an invalid relay pin '{route.RelayPin}'. Pin must be greater than 0.");
+            }
+            else if (route.RelayPin > 40)
+            {
+                errors.Add($"Route {route.SourceName}->{route.OutputName} has relay pin '{route.RelayPin}' which exceeds maximum valid pin (40).");
             }
 
             if (!string.IsNullOrWhiteSpace(route.SourceName) && !string.IsNullOrWhiteSpace(route.OutputName))
@@ -120,7 +124,11 @@ public static class AppSettingsValidator
 
             if (button.Value.PinNumber <= 0)
             {
-                errors.Add($"Physical button for source '{button.Key}' has invalid pin number '{button.Value.PinNumber}'.");
+                errors.Add($"Physical button for source '{button.Key}' has invalid pin number '{button.Value.PinNumber}'. Pin must be greater than 0.");
+            }
+            else if (button.Value.PinNumber > 40)
+            {
+                errors.Add($"Physical button for source '{button.Key}' has pin '{button.Value.PinNumber}' which exceeds maximum valid pin (40).");
             }
         }
     }
@@ -135,6 +143,10 @@ public static class AppSettingsValidator
         if (settings.InactiveRelay.Pin <= 0)
         {
             errors.Add($"Inactive relay pin '{settings.InactiveRelay.Pin}' must be greater than zero.");
+        }
+        else if (settings.InactiveRelay.Pin > 40)
+        {
+            errors.Add($"Inactive relay pin '{settings.InactiveRelay.Pin}' exceeds maximum valid pin (40).");
         }
     }
 

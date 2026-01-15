@@ -182,6 +182,49 @@ public class SwitcherClient
         }
     }
 
+    /// <summary>
+    /// Tests an individual GPIO pin by setting it to the specified state.
+    /// </summary>
+    public async Task TestPinAsync(int pin, bool activeLow, bool active)
+    {
+        if (!IsConnected)
+        {
+            System.Diagnostics.Debug.WriteLine("Cannot test pin: connection is not active");
+            return;
+        }
+
+        try
+        {
+            await _connection.SendAsync("TestPin", pin, activeLow, active);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error sending TestPin command: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Saves the provided configuration to the server.
+    /// </summary>
+    public async Task<SaveConfigurationResponse?> SaveConfigurationAsync(AppSettings settings)
+    {
+        if (!IsConnected)
+        {
+            System.Diagnostics.Debug.WriteLine("Cannot save configuration: connection is not active");
+            return new SaveConfigurationResponse { Success = false, Error = "Not connected to server" };
+        }
+
+        try
+        {
+            return await _connection.InvokeAsync<SaveConfigurationResponse>("SaveConfiguration", settings);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error sending SaveConfiguration command: {ex.Message}");
+            return new SaveConfigurationResponse { Success = false, Error = ex.Message };
+        }
+    }
+
     private Task OnConnectionClosed(Exception? exception)
     {
         System.Diagnostics.Debug.WriteLine($"Connection closed. Exception: {exception?.Message}");

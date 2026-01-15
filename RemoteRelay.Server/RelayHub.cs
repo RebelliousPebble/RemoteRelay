@@ -1,15 +1,18 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using RemoteRelay.Common;
+using RemoteRelay.Server.Services;
 
 namespace RemoteRelay.Server;
 
 public class RelayHub : Hub
 {
     private readonly SwitcherState _switcherState;
+    private readonly ConfigurationService _configurationService;
 
-    public RelayHub(SwitcherState switcherState)
+    public RelayHub(SwitcherState switcherState, ConfigurationService configurationService)
     {
         _switcherState = switcherState;
+        _configurationService = configurationService;
     }
 
     public override async Task OnConnectedAsync()
@@ -39,6 +42,29 @@ public class RelayHub : Hub
     public async Task GetConfiguration()
     {
         await Clients.Caller.SendAsync("Configuration", _switcherState.GetSettings());
+    }
+
+    /// <summary>
+    /// Tests an individual GPIO pin by setting it to the specified state.
+    /// Used during setup to verify pin assignments.
+    /// </summary>
+    public void TestPin(int pin, bool activeLow, bool active)
+    {
+        _switcherState.TestPin(pin, activeLow, active);
+    }
+
+    /// <summary>
+    /// Saves the provided configuration to the server's config.json file.
+    /// </summary>
+    /// <returns>A response indicating success or failure with error message.</returns>
+    public async Task<SaveConfigurationResponse> SaveConfiguration(AppSettings settings)
+    {
+        var (success, error) = await _configurationService.SaveAsync(settings);
+        return new SaveConfigurationResponse
+        {
+            Success = success,
+            Error = error
+        };
     }
 
     public async Task<HandshakeResponse> Handshake(string clientVersion)

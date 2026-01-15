@@ -185,7 +185,10 @@ public class MultiOutputViewModel : OperationViewModelBase
 
 			UpdateOutputAvailability(_activeSelection?.SourceName);
 
+		// Only show status for inputs that are visible (not filtered)
+		var visibleInputNames = Inputs.Select(i => i.SourceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 		var statusMessages = newStatus
+			.Where(pair => visibleInputNames.Contains(pair.Key))
 			.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
 			.Select(pair => string.IsNullOrWhiteSpace(pair.Value)
 				? $"{pair.Key} unrouted"

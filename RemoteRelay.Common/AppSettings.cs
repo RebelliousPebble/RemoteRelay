@@ -10,7 +10,7 @@ public class PhysicalButtonConfig
     public string TriggerState
     {
         get => _triggerState;
-        private set // Private setter for validation
+        set // Public setter for validation
         {
             if (string.Equals(value, "High", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(value, "Low", StringComparison.OrdinalIgnoreCase))
@@ -83,8 +83,8 @@ public struct AppSettings
     public AppSettings()
     {
         PhysicalSourceButtons = new Dictionary<string, PhysicalButtonConfig>();
-    DefaultRoutes = new Dictionary<string, string>();
-    SourceColorPalette = new Dictionary<string, string>();
+        DefaultRoutes = new Dictionary<string, string>();
+        SourceColorPalette = new Dictionary<string, string>();
         Routes = new List<RelayConfig>();
         LogoFile = string.Empty;
         // DefaultSource, TcpMirrorAddress are nullable strings (default to null)
@@ -98,5 +98,5 @@ public struct AppSettings
     public IReadOnlyCollection<string> Outputs => Routes?.Select(x => x.OutputName).Distinct().ToArray() ?? Array.Empty<string>();
 
 
-   // Properties moved up to group them, constructor added above.
+    // Properties moved up to group them, constructor added above.
 }

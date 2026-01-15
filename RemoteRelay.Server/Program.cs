@@ -119,6 +119,7 @@ public class Program
          return new ConfigurationWatcher(configPath, switcherState, logger);
       });
       builder.Services.AddHostedService(sp => sp.GetRequiredService<ConfigurationWatcher>());
+      builder.Services.AddSingleton(new ConfigurationService(configPath));
 
       builder.WebHost.ConfigureKestrel(options => { options.ListenAnyIP(initialSettings.ServerPort); });
 

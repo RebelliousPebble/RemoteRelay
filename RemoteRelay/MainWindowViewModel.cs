@@ -6,9 +6,11 @@ using System.Linq;
 using System.Reactive.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Windows.Input;
 using ReactiveUI;
 using RemoteRelay.Common;
 using RemoteRelay.MultiOutput;
+using RemoteRelay.Setup;
 using RemoteRelay.SingleOutput;
 
 namespace RemoteRelay;
@@ -20,6 +22,7 @@ public class MainWindowViewModel : ViewModelBase
     private int _retryCountdown;
     private ClientConfig _clientConfig;
     private const string ConfigFileName = "ClientConfig.json";
+    private AppSettings? _currentSettings;
 
     private string _serverStatusMessage = string.Empty;
     public string ServerStatusMessage
@@ -65,11 +68,25 @@ public class MainWindowViewModel : ViewModelBase
 
     public bool IsOperationViewReady => _operationViewModel != null;
 
+    private bool _showSetupButton;
+    public bool ShowSetupButton
+    {
+        get => _showSetupButton;
+        set => this.RaiseAndSetIfChanged(ref _showSetupButton, value);
+    }
+
+    public ICommand OpenSetupCommand { get; }
+
     public MainWindowViewModel()
     {
         Debug.WriteLine(Guid.NewGuid());
 
         LoadOrMigrateConfig();
+
+        // Setup button is only shown when connected to localhost
+        ShowSetupButton = _clientConfig.IsLocalhost;
+
+        OpenSetupCommand = ReactiveCommand.Create(OpenSetup);
 
         var serverUri = new Uri($"http://{_clientConfig.Host}:{_clientConfig.Port}/relay");
         SwitcherClient.InitializeInstance(serverUri);
@@ -78,7 +95,12 @@ public class MainWindowViewModel : ViewModelBase
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(settings =>
             {
-                ApplySettings(settings);
+                _currentSettings = settings;
+                // Only apply if we're not in setup mode
+                if (OperationViewModel is not SetupViewModel)
+                {
+                    ApplySettings(settings);
+                }
                 ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri} (settings refreshed at {DateTime.Now:T})";
             });
 
@@ -111,6 +133,22 @@ public class MainWindowViewModel : ViewModelBase
         });
 
         _ = InitializeConnectionAsync();
+    }
+
+    private void OpenSetup()
+    {
+        if (_currentSettings.HasValue)
+        {
+            OperationViewModel = new SetupViewModel(_currentSettings.Value, CloseSetup);
+        }
+    }
+
+    private void CloseSetup()
+    {
+        if (_currentSettings.HasValue)
+        {
+            ApplySettings(_currentSettings.Value);
+        }
     }
 
     private void LoadOrMigrateConfig()

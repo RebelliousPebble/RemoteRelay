@@ -18,21 +18,23 @@
             <RowDefinition Height="15*" />
         </Grid.RowDefinitions>
 
+        <!-- Filter status in top right corner -->
+        <TextBlock Text="{Binding FilterStatusMessage}"
+                   Grid.Row="0"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Top"
+                   Margin="0,5,15,0"
+                   FontSize="14"
+                   Foreground="Gray"
+                   IsVisible="{Binding FilterStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
         <Viewbox Grid.Row="0" Stretch="Uniform">
-            <Grid>
-                <Label Content="{Binding StatusMessage}"
-                       HorizontalAlignment="Stretch"
-                       VerticalAlignment="Stretch"
-                       HorizontalContentAlignment="Center"
-                       VerticalContentAlignment="Center"
-                       Padding="20" />
-                <TextBlock Text="{Binding FilterStatusMessage}"
-                           HorizontalAlignment="Right"
-                           VerticalAlignment="Top"
-                           Margin="0,5,10,0"
-                           FontSize="12"
-                           Foreground="Gray" />
-            </Grid>
+            <Label Content="{Binding StatusMessage}"
+                   HorizontalAlignment="Stretch"
+                   VerticalAlignment="Stretch"
+                   HorizontalContentAlignment="Center"
+                   VerticalContentAlignment="Center"
+                   Padding="20" />
         </Viewbox>
 
         <Grid Grid.Row="1" Margin="20,10">

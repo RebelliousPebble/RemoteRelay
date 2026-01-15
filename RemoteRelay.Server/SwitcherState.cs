@@ -122,6 +122,65 @@ public class SwitcherState : IDisposable
       }
    }
 
+   /// <summary>
+   /// Tests an individual GPIO pin by setting it to the specified state.
+   /// Used during setup to verify pin assignments.
+   /// </summary>
+   public void TestPin(int pin, bool activeLow, bool active)
+   {
+      if (pin <= 0)
+      {
+         Console.WriteLine($"TestPin: Invalid pin number {pin}");
+         return;
+      }
+
+      lock (_stateLock)
+      {
+         if (_gpiController == null)
+         {
+            Console.WriteLine("TestPin: GPIO controller not initialized");
+            return;
+         }
+
+         try
+         {
+            // Determine the value to write based on activeLow and desired state
+            PinValue valueToWrite;
+            if (active)
+            {
+               valueToWrite = activeLow ? PinValue.Low : PinValue.High;
+            }
+            else
+            {
+               valueToWrite = activeLow ? PinValue.High : PinValue.Low;
+            }
+
+            // Open pin if not already open
+            if (!_gpiController.IsPinOpen(pin))
+            {
+               _gpiController.OpenPin(pin, PinMode.Output);
+            }
+            else
+            {
+               // Ensure it's in output mode
+               var currentMode = _gpiController.GetPinMode(pin);
+               if (currentMode != PinMode.Output)
+               {
+                  _gpiController.SetPinMode(pin, PinMode.Output);
+               }
+            }
+
+            _gpiController.Write(pin, valueToWrite);
+            MockGpioDriver.UpdatePinState(pin, valueToWrite);
+            Console.WriteLine($"TestPin: Set pin {pin} to {valueToWrite} (active={active}, activeLow={activeLow})");
+         }
+         catch (Exception ex)
+         {
+            Console.WriteLine($"TestPin: Error setting pin {pin}: {ex.Message}");
+         }
+      }
+   }
+
    public void Dispose()
    {
       lock (_stateLock)
@@ -143,9 +202,26 @@ public class SwitcherState : IDisposable
       settings.SourceColorPalette = GeneratePalette(settings.Sources);
       _settings = settings;
 
-      _gpiController = IsGpiEnvironment()
-         ? new GpioController()
-         : new GpioController(new MockGpioDriver());
+      // Try to initialize real GPIO, fallback to mock if it fails
+      if (IsGpiEnvironment())
+      {
+         try
+         {
+            _gpiController = new GpioController();
+            Console.WriteLine("GPIO controller initialized successfully.");
+         }
+         catch (Exception ex)
+         {
+            Console.WriteLine($"WARNING: Failed to initialize GPIO controller: {ex.Message}");
+            Console.WriteLine("Falling back to mock GPIO mode.");
+            _gpiController = new GpioController(new MockGpioDriver());
+         }
+      }
+      else
+      {
+         _gpiController = new GpioController(new MockGpioDriver());
+         Console.WriteLine("Using mock GPIO mode (not on GPIO-capable hardware or UseMockGpio=true).");
+      }
 
       _sources = new List<Source>();
 

@@ -4,6 +4,7 @@
         xmlns:singleOutput="clr-namespace:RemoteRelay.SingleOutput"
         xmlns:multiOutput="clr-namespace:RemoteRelay.MultiOutput"
         xmlns:controls="clr-namespace:RemoteRelay.Controls"
+        xmlns:setup="clr-namespace:RemoteRelay.Setup"
         x:Class="RemoteRelay.MainWindow"
         Title="SourceSwitcher"
         Width="600" Height="300"
@@ -20,6 +21,9 @@
         <DataTemplate DataType="{x:Type controls:SourceButtonViewModel}">
             <controls:SourceButton />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type setup:SetupViewModel}">
+            <setup:SetupView />
+        </DataTemplate>
     </Window.DataTemplates>
 
     <DockPanel>
@@ -34,6 +38,13 @@
                    DockPanel.Dock="Top"
                    HorizontalAlignment="Center"
                    Margin="5" />
+        <Button Content="⚙ Setup"
+                DockPanel.Dock="Bottom"
+                Command="{Binding OpenSetupCommand}"
+                IsVisible="{Binding ShowSetupButton}"
+                HorizontalAlignment="Right"
+                Margin="10"
+                Padding="15,8"/>
         <ContentControl Content="{Binding OperationViewModel}"
                         IsVisible="{Binding IsOperationViewReady}"
                         HorizontalAlignment="Stretch"
