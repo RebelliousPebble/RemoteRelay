@@ -1,7 +1,8 @@
-# This workflow will build a .NET project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+# Build and package RemoteRelay for multiple platforms
+# Server: linux-arm64 (Raspberry Pi)
+# Client: win-x64, linux-x64, linux-arm64
 
-name: .NET
+name: .NET Build
 
 on:
   push:
@@ -11,39 +12,118 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 9.0.x
+        dotnet-version: 10.0.x
+
     - name: Restore dependencies
       run: dotnet restore
+
     - name: Build
       run: dotnet build --no-restore --configuration Release
-    - name: Publish
-      run: dotnet publish /p:PublishProfile=FolderProfile
-    - name: Publish 2
-      run: dotnet publish /p:PublishProfile=FolderProfile1
 
-    # Remove zip steps and reference the folders directly
-    - name: Upload RemoteRelay-Client-Win64 artifact
+    # ======== Server Build (linux-arm64 only) ========
+    - name: Publish Server - linux-arm64
+      run: |
+        dotnet publish RemoteRelay.Server/RemoteRelay.Server.csproj \
+          --configuration Release \
+          --runtime linux-arm64 \
+          --self-contained true \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -o ./publish/server-linux-arm64
+
+    # ======== Client Builds (multi-platform) ========
+    - name: Publish Client - win-x64
+      run: |
+        dotnet publish RemoteRelay/RemoteRelay.csproj \
+          --configuration Release \
+          --runtime win-x64 \
+          --self-contained true \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -o ./publish/client-win-x64
+
+    - name: Publish Client - linux-x64
+      run: |
+        dotnet publish RemoteRelay/RemoteRelay.csproj \
+          --configuration Release \
+          --runtime linux-x64 \
+          --self-contained true \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -o ./publish/client-linux-x64
+
+    - name: Publish Client - linux-arm64
+      run: |
+        dotnet publish RemoteRelay/RemoteRelay.csproj \
+          --configuration Release \
+          --runtime linux-arm64 \
+          --self-contained true \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -o ./publish/client-linux-arm64
+
+    # ======== Upload Artifacts ========
+    - name: Upload Server - linux-arm64
       uses: actions/upload-artifact@v4
       with:
-        name: RemoteRelay-Client-Win64-artifacts
-        path: ./RemoteRelay/bin/Release/net9.0/publish/win-x64
+        name: RemoteRelay-Server-linux-arm64
+        path: ./publish/server-linux-arm64
 
-    - name: Upload RemoteRelay-Client-LinuxArm64 artifact
+    - name: Upload Client - win-x64
       uses: actions/upload-artifact@v4
       with:
-        name: RemoteRelay-Client-LinuxArm64-artifacts
-        path: ./RemoteRelay/bin/Release/net9.0/publish/linux-arm64
+        name: RemoteRelay-Client-win-x64
+        path: ./publish/client-win-x64
 
-    - name: Upload RemoteRelay-Server-LinuxArm64 artifact
+    - name: Upload Client - linux-x64
       uses: actions/upload-artifact@v4
       with:
-        name: RemoteRelay-Server-LinuxArm64-artifacts
-        path: ./RemoteRelay.Server/bin/Release/net9.0/publish
+        name: RemoteRelay-Client-linux-x64
+        path: ./publish/client-linux-x64
+
+    - name: Upload Client - linux-arm64
+      uses: actions/upload-artifact@v4
+      with:
+        name: RemoteRelay-Client-linux-arm64
+        path: ./publish/client-linux-arm64
+
+    # ======== Makeself Installer (linux-arm64) ========
+    - name: Install makeself
+      run: sudo apt-get update && sudo apt-get install -y makeself
+
+    - name: Create makeself installer
+      run: |
+        # Create staging directory
+        mkdir -p makeself_stage/client_files
+        mkdir -p makeself_stage/server_files
+        
+        # Copy published files
+        cp -a ./publish/client-linux-arm64/. makeself_stage/client_files/
+        cp -a ./publish/server-linux-arm64/. makeself_stage/server_files/
+        
+        # Copy and prepare scripts
+        cp install.sh makeself_stage/
+        cp uninstall.sh makeself_stage/
+        cp update.sh makeself_stage/
+        
+        # Ensure Unix line endings and executable
+        sed -i 's/\r$//' makeself_stage/*.sh
+        chmod +x makeself_stage/*.sh
+        
+        # Create the installer
+        makeself --gzip makeself_stage remote-relay-installer-linux-arm64.sh \
+          "RemoteRelay Installer (linux-arm64)" ./install.sh
+
+    - name: Upload Makeself Installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: RemoteRelay-Installer-linux-arm64
+        path: ./remote-relay-installer-linux-arm64.sh
