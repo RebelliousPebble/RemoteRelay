@@ -57,6 +57,16 @@ public class RouteConfigViewModel : ViewModelBase
         }
     }
 
+    private string _tcpMessage = string.Empty;
+    /// <summary>
+    /// TCP message to send when this route is activated.
+    /// </summary>
+    public string TcpMessage
+    {
+        get => _tcpMessage;
+        set => this.RaiseAndSetIfChanged(ref _tcpMessage, value);
+    }
+
     public ICommand DeleteRouteCommand { get; }
 
     public RouteConfigViewModel(
@@ -64,15 +74,16 @@ public class RouteConfigViewModel : ViewModelBase
         int relayPin,
         bool activeLow,
         bool isDefaultRoute,
+        string tcpMessage,
         Func<Action<RouteConfigViewModel>> getDeleteAction)
     {
         _outputName = outputName;
         _relayPin = relayPin;
         _activeLow = activeLow;
         _isDefaultRoute = isDefaultRoute;
+        _tcpMessage = tcpMessage;
         _getDeleteAction = getDeleteAction;
 
         DeleteRouteCommand = ReactiveCommand.Create(() => _getDeleteAction()(this));
     }
 }
-

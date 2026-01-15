@@ -161,6 +161,7 @@ public class SetupViewModel : ViewModelBase
                     route.RelayPin,
                     route.ActiveLow,
                     isDefault,
+                    route.TcpMessage ?? string.Empty,
                     () => inputVm.RemoveRoute));
             }
 
@@ -258,7 +259,8 @@ public class SetupViewModel : ViewModelBase
                     SourceName = input.SourceName,
                     OutputName = route.OutputName,
                     RelayPin = route.RelayPin,
-                    ActiveLow = route.ActiveLow
+                    ActiveLow = route.ActiveLow,
+                    TcpMessage = string.IsNullOrWhiteSpace(route.TcpMessage) ? null : route.TcpMessage
                 });
 
                 // Add default route if marked

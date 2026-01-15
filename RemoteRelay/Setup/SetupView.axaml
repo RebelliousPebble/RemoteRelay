@@ -88,13 +88,13 @@
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="15">
                             <TextBlock Text="Server Port:" Classes="label"/>
-                            <NumericUpDown Value="{Binding ServerPort}" Minimum="1" Maximum="65535" Width="120"/>
+                            <NumericUpDown Value="{Binding ServerPort}" Minimum="1" Maximum="65535" Width="130"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="15">
                             <TextBlock Text="TCP Mirror:" Classes="label"/>
                             <TextBox Text="{Binding TcpMirrorAddress}" Watermark="Address" Width="250"/>
                             <TextBlock Text="Port:" Classes="label"/>
-                            <NumericUpDown Value="{Binding TcpMirrorPort}" Minimum="1" Maximum="65535" Width="100"/>
+                            <NumericUpDown Value="{Binding TcpMirrorPort}" Minimum="1" Maximum="65535" Width="130"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -168,23 +168,32 @@
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type setup:RouteConfigViewModel}">
                                                 <Border Classes="route-card">
-                                                    <StackPanel Orientation="Horizontal" Spacing="12">
-                                                        <TextBlock Text="Name:" Classes="label"/>
-                                                        <TextBox Text="{Binding OutputName}" Width="120"/>
+                                                    <StackPanel Spacing="8">
+                                                        <!-- Row 1: Name, Pin, options, toggle, delete -->
+                                                        <StackPanel Orientation="Horizontal" Spacing="12">
+                                                            <TextBlock Text="Name:" Classes="label"/>
+                                                            <TextBox Text="{Binding OutputName}" Width="120"/>
+                                                            
+                                                            <TextBlock Text="Pin:" Classes="label"/>
+                                                            <NumericUpDown Value="{Binding RelayPin}" Minimum="0" Maximum="40" Width="80"/>
+                                                            
+                                                            <CheckBox IsChecked="{Binding ActiveLow}" Content="Active Low" VerticalAlignment="Center" Margin="5,0"/>
+                                                            <CheckBox IsChecked="{Binding IsDefaultRoute}" Content="Default" VerticalAlignment="Center" Margin="5,0"/>
+                                                            
+                                                            <ToggleSwitch IsChecked="{Binding IsRelayOn}" 
+                                                                          OnContent="ON" 
+                                                                          OffContent="OFF"
+                                                                          VerticalAlignment="Center"
+                                                                          Margin="10,0"/>
+                                                            
+                                                            <Button Content="🗑" Command="{Binding DeleteRouteCommand}" Classes="delete-btn"/>
+                                                        </StackPanel>
                                                         
-                                                        <TextBlock Text="Pin:" Classes="label"/>
-                                                        <NumericUpDown Value="{Binding RelayPin}" Minimum="0" Maximum="40" Width="80"/>
-                                                        
-                                                        <CheckBox IsChecked="{Binding ActiveLow}" Content="Active Low" VerticalAlignment="Center" Margin="5,0"/>
-                                                        <CheckBox IsChecked="{Binding IsDefaultRoute}" Content="Default" VerticalAlignment="Center" Margin="5,0"/>
-                                                        
-                                                        <ToggleSwitch IsChecked="{Binding IsRelayOn}" 
-                                                                      OnContent="ON" 
-                                                                      OffContent="OFF"
-                                                                      VerticalAlignment="Center"
-                                                                      Margin="10,0"/>
-                                                        
-                                                        <Button Content="🗑" Command="{Binding DeleteRouteCommand}" Classes="delete-btn"/>
+                                                        <!-- Row 2: TCP Message -->
+                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <TextBlock Text="TCP Message:" Classes="label"/>
+                                                            <TextBox Text="{Binding TcpMessage}" Watermark="message to send on switch" Width="300"/>
+                                                        </StackPanel>
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>

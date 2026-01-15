@@ -61,7 +61,7 @@ public class InputConfigViewModel : ViewModelBase
     private void AddOutputRoute()
     {
         var newName = $"Output {OutputRoutes.Count + 1}";
-        OutputRoutes.Add(new RouteConfigViewModel(newName, 0, true, false, () => RemoveRoute));
+        OutputRoutes.Add(new RouteConfigViewModel(newName, 0, true, false, string.Empty, () => RemoveRoute));
     }
 
     public void RemoveRoute(RouteConfigViewModel route)

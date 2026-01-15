@@ -106,11 +106,13 @@ public class Program
 
       var builder = WebApplication.CreateBuilder(args);
       builder.Services.AddSignalR();
+      builder.Services.AddSingleton<TcpMessageService>();
       builder.Services.AddSingleton<SwitcherState>(sp =>
       {
          var hubContext = sp.GetRequiredService<IHubContext<RelayHub>>();
          var logger = sp.GetRequiredService<ILogger<SwitcherState>>();
-         return new SwitcherState(initialSettings, hubContext, logger);
+         var tcpMessageService = sp.GetRequiredService<TcpMessageService>();
+         return new SwitcherState(initialSettings, hubContext, logger, tcpMessageService);
       });
       builder.Services.AddSingleton(sp =>
       {
