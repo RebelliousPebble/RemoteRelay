@@ -12,327 +12,335 @@ namespace RemoteRelay.MultiOutput;
 
 public class MultiOutputViewModel : OperationViewModelBase
 {
-	private readonly Dictionary<string, SourceButtonViewModel> _inputLookup;
-	private readonly Dictionary<string, SourceButtonViewModel> _outputLookup;
-	private readonly Dictionary<string, Color> _palette;
-	private SourceButtonViewModel? _activeSelection;
+    private readonly Dictionary<string, SourceButtonViewModel> _inputLookup;
+    private readonly Dictionary<string, SourceButtonViewModel> _outputLookup;
+    private readonly Dictionary<string, Color> _palette;
+    private SourceButtonViewModel? _activeSelection;
 
     public string FilterStatusMessage { get; }
 
-	public MultiOutputViewModel(AppSettings settings, string filterStatusMessage = "")
-		: base(settings)
-	{
+    public MultiOutputViewModel(AppSettings settings, string filterStatusMessage = "")
+        : base(settings)
+    {
         FilterStatusMessage = filterStatusMessage;
-		Inputs = settings.Sources.Select(source => new SourceButtonViewModel(source)).ToList();
-		Outputs = settings.Outputs.Select(output => new SourceButtonViewModel(output)).ToList();
+        Inputs = settings.Sources.Select(source => new SourceButtonViewModel(source)).ToList();
+        Outputs = settings.Outputs.Select(output => new SourceButtonViewModel(output)).ToList();
 
-		_inputLookup = Inputs.ToDictionary(vm => vm.SourceName);
-		_outputLookup = Outputs.ToDictionary(vm => vm.SourceName);
-		_palette = BuildPalette(settings);
+        _inputLookup = Inputs.ToDictionary(vm => vm.SourceName);
+        _outputLookup = Outputs.ToDictionary(vm => vm.SourceName);
+        _palette = BuildPalette(settings);
 
-		var cancelRequested = Observable.Merge(
-			CancelStream,
-			Server._stateChanged.Select(_ => Unit.Default));
+        var cancelRequested = Observable.Merge(
+            CancelStream,
+            Server._stateChanged.Select(_ => Unit.Default));
 
-			var selectedInputStream = Inputs
-				.Select(vm => vm.Clicked.Select(_ => vm))
-				.Merge()
-				.Select(vm => Observable
-					.Return(vm)
-					.Merge(
-						Observable
-							.Return((SourceButtonViewModel?)null)
-							.Delay(TimeSpan.FromSeconds(TimeoutSeconds))))
-				.Merge(cancelRequested.Select(_ => Observable.Return((SourceButtonViewModel?)null)))
-				.Switch()
-				.DistinctUntilChanged()
-				.Publish()
-				.RefCount();
+        var selectedInputStream = Inputs
+            .Select(vm => vm.Clicked.Select(_ => vm))
+            .Merge()
+            .Select(vm => Observable
+                .Return(vm)
+                .Merge(
+                    Observable
+                        .Return((SourceButtonViewModel?)null)
+                        .Delay(TimeSpan.FromSeconds(TimeoutSeconds))))
+            .Merge(cancelRequested.Select(_ => Observable.Return((SourceButtonViewModel?)null)))
+            .Switch()
+            .DistinctUntilChanged()
+            .Publish()
+            .RefCount();
 
-	Disposables.Add(selectedInputStream
-		.ObserveOn(RxApp.MainThreadScheduler)
-		.Subscribe(current =>
-		{
-			if (_activeSelection != null && _activeSelection != current)
-			{
-				RestoreInputState(_activeSelection);
-			}
+        Disposables.Add(selectedInputStream
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(current =>
+            {
+                if (_activeSelection != null && _activeSelection != current)
+                {
+                    RestoreInputState(_activeSelection);
+                }
 
-			_activeSelection = current;
+                _activeSelection = current;
 
-			if (current != null)
-			{
-				UpdateOutputAvailability(current.SourceName);
-				current.SetState(SourceState.Selected);
-				PushStatusMessage(BuildCountdownMessage(current.SourceName));
-			}
-			else
-			{
-				UpdateOutputAvailability(null);
-				foreach (var input in Inputs)
-				{
-					RestoreInputState(input);
-				}
-				PushStatusMessage(string.Empty);
-			}
-		}));
+                if (current != null)
+                {
+                    UpdateOutputAvailability(current.SourceName);
+                    current.SetState(SourceState.Selected);
 
-					Disposables.Add(Server._stateChanged
-						.Take(1)
-						.Subscribe(status => HandleStatusUpdate(status)));
+                // Flash the selected input if FlashOnSelect is enabled
+                if (FlashOnSelect)
+                    {
+                        var flashColor = ResolveColour(current.SourceName);
+                        current.StartFlashAnimation(flashColor);
+                    }
 
-					if (CurrentStatus.Count > 0)
-					{
-						HandleStatusUpdate(CurrentStatus);
-					}
+                    PushStatusMessage(BuildCountdownMessage(current.SourceName));
+                }
+                else
+                {
+                    UpdateOutputAvailability(null);
+                    foreach (var input in Inputs)
+                    {
+                        RestoreInputState(input);
+                    }
+                    PushStatusMessage(string.Empty);
+                }
+            }));
 
-			var connection = Outputs
-			.Select(vm => vm.Clicked.Select(_ => vm))
-			.Merge()
-			.WithLatestFrom(selectedInputStream, (output, input) => (Output: output, Input: input))
-			.Where(tuple => tuple.Input != null)
-				.Select(tuple => (Output: tuple.Output, Input: tuple.Input!));
+        Disposables.Add(Server._stateChanged
+            .Take(1)
+            .Subscribe(status => HandleStatusUpdate(status)));
 
-		Disposables.Add(connection.Subscribe(tuple =>
-		{
-			RequestCancel();
+        if (CurrentStatus.Count > 0)
+        {
+            HandleStatusUpdate(CurrentStatus);
+        }
 
-			if (!Server.IsConnected)
-			{
-				PushStatusMessage("Server connection lost. Please wait for reconnection.");
-				return;
-			}
+        var connection = Outputs
+        .Select(vm => vm.Clicked.Select(_ => vm))
+        .Merge()
+        .WithLatestFrom(selectedInputStream, (output, input) => (Output: output, Input: input))
+        .Where(tuple => tuple.Input != null)
+            .Select(tuple => (Output: tuple.Output, Input: tuple.Input!));
 
-			var inputName = tuple.Input.SourceName;
-			var outputName = tuple.Output.SourceName;
+        Disposables.Add(connection.Subscribe(tuple =>
+        {
+            RequestCancel();
 
-			PushStatusMessage($"Routing {inputName} to {outputName}...");
+            if (!Server.IsConnected)
+            {
+                PushStatusMessage("Server connection lost. Please wait for reconnection.");
+                return;
+            }
 
-			Server.SwitchSource(inputName, outputName);
+            var inputName = tuple.Input.SourceName;
+            var outputName = tuple.Output.SourceName;
 
-			PushStatusMessage(
-				Observable
-					.Return("No response received from server")
-					.Delay(TimeSpan.FromSeconds(TimeoutSeconds))
-					.StartWith($"Waiting for {outputName} confirmation..."));
-		}));
+            PushStatusMessage($"Routing {inputName} to {outputName}...");
 
-		Disposables.Add(selectedInputStream
-			.Where(vm => vm == null)
-			.Subscribe(_ => HandleCancel()));
-	}
+            Server.SwitchSource(inputName, outputName);
 
-	public IReadOnlyList<SourceButtonViewModel> Inputs { get; }
+            PushStatusMessage(
+                Observable
+                    .Return("No response received from server")
+                    .Delay(TimeSpan.FromSeconds(TimeoutSeconds))
+                    .StartWith($"Waiting for {outputName} confirmation..."));
+        }));
 
-	public IReadOnlyList<SourceButtonViewModel> Outputs { get; }
+        Disposables.Add(selectedInputStream
+            .Where(vm => vm == null)
+            .Subscribe(_ => HandleCancel()));
+    }
 
-		protected override void HandleStatusUpdate(IReadOnlyDictionary<string, string> newStatus)
-	{
-		PushStatusMessage("Updating...");
+    public IReadOnlyList<SourceButtonViewModel> Inputs { get; }
 
-		if (newStatus.Count == 0)
-		{
-			foreach (var input in Inputs)
-				input.SetState(SourceState.Inactive);
+    public IReadOnlyList<SourceButtonViewModel> Outputs { get; }
 
-			foreach (var output in Outputs)
-			{
-				output.SetState(SourceState.Inactive);
-				output.IsEnabled = true;
-			}
+    protected override void HandleStatusUpdate(IReadOnlyDictionary<string, string> newStatus)
+    {
+        PushStatusMessage("Updating...");
 
-			UpdateOutputAvailability(null);
-			PushStatusMessage(string.Empty);
-			return;
-		}
+        if (newStatus.Count == 0)
+        {
+            foreach (var input in Inputs)
+                input.SetState(SourceState.Inactive);
 
-			var outputAssignments = newStatus
-				.Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
-				.ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
+            foreach (var output in Outputs)
+            {
+                output.SetState(SourceState.Inactive);
+                output.IsEnabled = true;
+            }
 
-			foreach (var input in Inputs)
-			{
-				if (newStatus.TryGetValue(input.SourceName, out var outputName) && !string.IsNullOrWhiteSpace(outputName))
-				{
-					var colour = ResolveColour(input.SourceName);
-					input.SetState(SourceState.Linked, colour);
-				}
-				else
-				{
-					input.SetState(SourceState.Inactive);
-				}
-			}
+            UpdateOutputAvailability(null);
+            PushStatusMessage(string.Empty);
+            return;
+        }
 
-			if (_activeSelection != null)
-			{
-				_activeSelection.SetState(SourceState.Selected);
-			}
+        var outputAssignments = newStatus
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+            .ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
 
-		foreach (var output in Outputs)
-		{
-			if (outputAssignments.TryGetValue(output.SourceName, out var sourceName))
-			{
-				var colour = ResolveColour(sourceName);
-				output.SetState(SourceState.Linked, colour);
-					output.IsEnabled = true;
-			}
-			else
-			{
-				output.SetState(SourceState.Inactive);
-					output.IsEnabled = true;
-			}
-		}
+        foreach (var input in Inputs)
+        {
+            if (newStatus.TryGetValue(input.SourceName, out var outputName) && !string.IsNullOrWhiteSpace(outputName))
+            {
+                var colour = ResolveColour(input.SourceName);
+                input.SetState(SourceState.Linked, colour);
+            }
+            else
+            {
+                input.SetState(SourceState.Inactive);
+            }
+        }
 
-			UpdateOutputAvailability(_activeSelection?.SourceName);
+        if (_activeSelection != null)
+        {
+            _activeSelection.SetState(SourceState.Selected);
+        }
 
-		// Only show status for inputs that are visible (not filtered)
-		var visibleInputNames = Inputs.Select(i => i.SourceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-		var statusMessages = newStatus
-			.Where(pair => visibleInputNames.Contains(pair.Key))
-			.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-			.Select(pair => string.IsNullOrWhiteSpace(pair.Value)
-				? $"{pair.Key} unrouted"
-				: $"{pair.Key} → {pair.Value}");
+        foreach (var output in Outputs)
+        {
+            if (outputAssignments.TryGetValue(output.SourceName, out var sourceName))
+            {
+                var colour = ResolveColour(sourceName);
+                output.SetState(SourceState.Linked, colour);
+                output.IsEnabled = true;
+            }
+            else
+            {
+                output.SetState(SourceState.Inactive);
+                output.IsEnabled = true;
+            }
+        }
 
-		PushStatusMessage(string.Join("  |  ", statusMessages));
-	}
+        UpdateOutputAvailability(_activeSelection?.SourceName);
 
-		protected override void HandleCancel()
-		{
-			_activeSelection = null;
-			base.HandleCancel();
-		}
+        // Only show status for inputs that are visible (not filtered)
+        var visibleInputNames = Inputs.Select(i => i.SourceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var statusMessages = newStatus
+            .Where(pair => visibleInputNames.Contains(pair.Key))
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => string.IsNullOrWhiteSpace(pair.Value)
+                ? $"{pair.Key} unrouted"
+                : $"{pair.Key} → {pair.Value}");
 
-	private void RestoreInputState(SourceButtonViewModel input)
-	{
-		if (CurrentStatus.TryGetValue(input.SourceName, out var output) && !string.IsNullOrWhiteSpace(output))
-		{
-			input.SetState(SourceState.Linked, ResolveColour(input.SourceName));
-		}
-		else
-		{
-			input.SetState(SourceState.Inactive);
-		}
-	}
+        PushStatusMessage(string.Join("  |  ", statusMessages));
+    }
 
-		private void UpdateOutputAvailability(string? selectedSource)
-		{
-			if (string.IsNullOrWhiteSpace(selectedSource))
-			{
-				foreach (var output in Outputs)
-				{
-					output.IsEnabled = true;
-				}
-				return;
-			}
+    protected override void HandleCancel()
+    {
+        _activeSelection = null;
+        base.HandleCancel();
+    }
 
-			var availableOutputs = Settings.Routes
-				.Where(route => string.Equals(route.SourceName, selectedSource, StringComparison.OrdinalIgnoreCase))
-				.Select(route => route.OutputName)
-				.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    private void RestoreInputState(SourceButtonViewModel input)
+    {
+        if (CurrentStatus.TryGetValue(input.SourceName, out var output) && !string.IsNullOrWhiteSpace(output))
+        {
+            input.SetState(SourceState.Linked, ResolveColour(input.SourceName));
+        }
+        else
+        {
+            input.SetState(SourceState.Inactive);
+        }
+    }
 
-			foreach (var output in Outputs)
-			{
-				output.IsEnabled = availableOutputs.Contains(output.SourceName);
-			}
-		}
+    private void UpdateOutputAvailability(string? selectedSource)
+    {
+        if (string.IsNullOrWhiteSpace(selectedSource))
+        {
+            foreach (var output in Outputs)
+            {
+                output.IsEnabled = true;
+            }
+            return;
+        }
 
-	private Dictionary<string, Color> BuildPalette(AppSettings settings)
-	{
-		var palette = new Dictionary<string, Color>(StringComparer.OrdinalIgnoreCase);
+        var availableOutputs = Settings.Routes
+            .Where(route => string.Equals(route.SourceName, selectedSource, StringComparison.OrdinalIgnoreCase))
+            .Select(route => route.OutputName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-		if (settings.SourceColorPalette != null && settings.SourceColorPalette.Count > 0)
-		{
-			foreach (var kvp in settings.SourceColorPalette)
-			{
-				palette[kvp.Key] = TryParseColour(kvp.Value);
-			}
-		}
+        foreach (var output in Outputs)
+        {
+            output.IsEnabled = availableOutputs.Contains(output.SourceName);
+        }
+    }
 
-		foreach (var source in settings.Sources)
-		{
-			if (!palette.ContainsKey(source))
-			{
-				palette[source] = GenerateFallbackColour(source);
-			}
-		}
+    private Dictionary<string, Color> BuildPalette(AppSettings settings)
+    {
+        var palette = new Dictionary<string, Color>(StringComparer.OrdinalIgnoreCase);
 
-		return palette;
-	}
+        if (settings.SourceColorPalette != null && settings.SourceColorPalette.Count > 0)
+        {
+            foreach (var kvp in settings.SourceColorPalette)
+            {
+                palette[kvp.Key] = TryParseColour(kvp.Value);
+            }
+        }
 
-	private Color ResolveColour(string source)
-	{
-		if (_palette.TryGetValue(source, out var colour))
-		{
-			return colour;
-		}
+        foreach (var source in settings.Sources)
+        {
+            if (!palette.ContainsKey(source))
+            {
+                palette[source] = GenerateFallbackColour(source);
+            }
+        }
 
-		var generated = GenerateFallbackColour(source);
-		_palette[source] = generated;
-		return generated;
-	}
+        return palette;
+    }
 
-	private static Color TryParseColour(string value)
-	{
-		if (string.IsNullOrWhiteSpace(value))
-			return Colors.LightGray;
+    private Color ResolveColour(string source)
+    {
+        if (_palette.TryGetValue(source, out var colour))
+        {
+            return colour;
+        }
 
-		try
-		{
-			return Color.Parse(value);
-		}
-		catch
-		{
-			return Colors.LightGray;
-		}
-	}
+        var generated = GenerateFallbackColour(source);
+        _palette[source] = generated;
+        return generated;
+    }
 
-	private static Color GenerateFallbackColour(string seed)
-	{
-		unchecked
-		{
-			var hash = seed.Aggregate(17, (current, c) => current * 31 + c);
-			var hue = (hash % 360 + 360) % 360;
-			return FromHsl(hue / 360d, 0.6, 0.5);
-		}
-	}
+    private static Color TryParseColour(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Colors.LightGray;
 
-	private static Color FromHsl(double h, double s, double l)
-	{
-		double r, g, b;
+        try
+        {
+            return Color.Parse(value);
+        }
+        catch
+        {
+            return Colors.LightGray;
+        }
+    }
 
-		if (s == 0)
-		{
-			r = g = b = l;
-		}
-		else
-		{
-			double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-			double p = 2 * l - q;
-			r = HueToRgb(p, q, h + 1.0 / 3);
-			g = HueToRgb(p, q, h);
-			b = HueToRgb(p, q, h - 1.0 / 3);
-		}
+    private static Color GenerateFallbackColour(string seed)
+    {
+        unchecked
+        {
+            var hash = seed.Aggregate(17, (current, c) => current * 31 + c);
+            var hue = (hash % 360 + 360) % 360;
+            return FromHsl(hue / 360d, 0.6, 0.5);
+        }
+    }
 
-		return Color.FromArgb(255, (byte)Math.Round(r * 255), (byte)Math.Round(g * 255), (byte)Math.Round(b * 255));
-	}
+    private static Color FromHsl(double h, double s, double l)
+    {
+        double r, g, b;
 
-	private static double HueToRgb(double p, double q, double t)
-	{
-		if (t < 0) t += 1;
-		if (t > 1) t -= 1;
-		if (t < 1.0 / 6) return p + (q - p) * 6 * t;
-		if (t < 1.0 / 2) return q;
-		if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
-		return p;
-	}
+        if (s == 0)
+        {
+            r = g = b = l;
+        }
+        else
+        {
+            double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            double p = 2 * l - q;
+            r = HueToRgb(p, q, h + 1.0 / 3);
+            g = HueToRgb(p, q, h);
+            b = HueToRgb(p, q, h - 1.0 / 3);
+        }
 
-	private IObservable<string> BuildCountdownMessage(string sourceName)
-	{
-		return Observable
-			.Timer(TimeSpan.Zero, TimeSpan.FromSeconds(1))
-			.Take(TimeoutSeconds + 1)
-			.Select(x => TimeoutSeconds - x)
-			.Select(remaining => $"Select output for {sourceName} – {remaining}s");
-	}
+        return Color.FromArgb(255, (byte)Math.Round(r * 255), (byte)Math.Round(g * 255), (byte)Math.Round(b * 255));
+    }
+
+    private static double HueToRgb(double p, double q, double t)
+    {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+        if (t < 1.0 / 2) return q;
+        if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+        return p;
+    }
+
+    private IObservable<string> BuildCountdownMessage(string sourceName)
+    {
+        return Observable
+            .Timer(TimeSpan.Zero, TimeSpan.FromSeconds(1))
+            .Take(TimeoutSeconds + 1)
+            .Select(x => TimeoutSeconds - x)
+            .Select(remaining => $"Select output for {sourceName} – {remaining}s");
+    }
 }

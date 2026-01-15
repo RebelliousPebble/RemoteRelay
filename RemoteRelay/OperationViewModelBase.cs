@@ -2,7 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
@@ -18,149 +22,192 @@ namespace RemoteRelay;
 
 public abstract class OperationViewModelBase : ViewModelBase, IDisposable
 {
-   private readonly Subject<Unit> _cancelRequests = new();
-   private readonly Subject<IObservable<string>> _messageQueue = new();
-   private readonly CompositeDisposable _disposables = new();
+    private readonly Subject<Unit> _cancelRequests = new();
+    private readonly Subject<IObservable<string>> _messageQueue = new();
+    private readonly CompositeDisposable _disposables = new();
 
-   private Bitmap? _stationLogo;
-   private string _statusMessage = string.Empty;
+    private Bitmap? _stationLogo;
+    private string _statusMessage = string.Empty;
 
-   protected OperationViewModelBase(AppSettings settings, int timeoutSeconds = 3)
-   {
-      Settings = settings;
-      TimeoutSeconds = timeoutSeconds;
-      Cancel = new SourceButtonViewModel("Cancel");
+    protected OperationViewModelBase(AppSettings settings, int timeoutSeconds = 3)
+    {
+        Settings = settings;
+        TimeoutSeconds = timeoutSeconds;
+        Cancel = new SourceButtonViewModel("Cancel");
 
-      Cancel.Clicked.Subscribe(_ => _cancelRequests.OnNext(Unit.Default)).DisposeWith(_disposables);
+        Cancel.Clicked.Subscribe(_ => _cancelRequests.OnNext(Unit.Default)).DisposeWith(_disposables);
 
-      _messageQueue
-         .Switch()
-         .ObserveOn(RxApp.MainThreadScheduler)
-         .Subscribe(message => StatusMessage = message)
-         .DisposeWith(_disposables);
+        _messageQueue
+           .Switch()
+           .ObserveOn(RxApp.MainThreadScheduler)
+           .Subscribe(message => StatusMessage = message)
+           .DisposeWith(_disposables);
 
-      _cancelRequests
-         .ObserveOn(RxApp.MainThreadScheduler)
-         .Subscribe(_ => HandleCancel())
-         .DisposeWith(_disposables);
+        _cancelRequests
+           .ObserveOn(RxApp.MainThreadScheduler)
+           .Subscribe(_ => HandleCancel())
+           .DisposeWith(_disposables);
 
-      SwitcherClient.Instance._stateChanged
-         .ObserveOn(RxApp.MainThreadScheduler)
-         .Subscribe(status =>
-         {
-            CurrentStatus = status;
-            HandleStatusUpdate(status);
-         })
-         .DisposeWith(_disposables);
+        SwitcherClient.Instance._stateChanged
+           .ObserveOn(RxApp.MainThreadScheduler)
+           .Subscribe(status =>
+           {
+               CurrentStatus = status;
+               HandleStatusUpdate(status);
+           })
+           .DisposeWith(_disposables);
 
-      SwitcherClient.Instance._connectionStateChanged
-         .Where(isConnected => isConnected)
-         .ObserveOn(RxApp.MainThreadScheduler)
-         .Subscribe(_ =>
-         {
+        SwitcherClient.Instance._connectionStateChanged
+           .Where(isConnected => isConnected)
+           .ObserveOn(RxApp.MainThreadScheduler)
+           .Subscribe(_ =>
+           {
+               SwitcherClient.Instance.RequestStatus();
+           })
+           .DisposeWith(_disposables);
+
+        if (SwitcherClient.Instance.IsConnected)
+        {
             SwitcherClient.Instance.RequestStatus();
-         })
-         .DisposeWith(_disposables);
+        }
 
-      if (SwitcherClient.Instance.IsConnected)
-      {
-         SwitcherClient.Instance.RequestStatus();
-      }
+        _ = LoadStationLogoAsync();
+    }
 
-      _ = LoadStationLogoAsync();
-   }
+    protected AppSettings Settings { get; }
 
-   protected AppSettings Settings { get; }
+    protected IReadOnlyDictionary<string, string> CurrentStatus { get; private set; } =
+       new Dictionary<string, string>();
 
-   protected IReadOnlyDictionary<string, string> CurrentStatus { get; private set; } =
-      new Dictionary<string, string>();
+    protected SwitcherClient Server => SwitcherClient.Instance;
 
-   protected SwitcherClient Server => SwitcherClient.Instance;
+    protected int TimeoutSeconds { get; }
 
-   protected int TimeoutSeconds { get; }
+    protected CompositeDisposable Disposables => _disposables;
 
-   protected CompositeDisposable Disposables => _disposables;
+    public SourceButtonViewModel Cancel { get; }
 
-   public SourceButtonViewModel Cancel { get; }
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        protected set => this.RaiseAndSetIfChanged(ref _statusMessage, value);
+    }
 
-   public string StatusMessage
-   {
-      get => _statusMessage;
-      protected set => this.RaiseAndSetIfChanged(ref _statusMessage, value);
-   }
+    public Bitmap? StationLogo
+    {
+        get => _stationLogo;
+        protected set => this.RaiseAndSetIfChanged(ref _stationLogo, value);
+    }
 
-   public Bitmap? StationLogo
-   {
-      get => _stationLogo;
-      protected set => this.RaiseAndSetIfChanged(ref _stationLogo, value);
-   }
+    public bool ShowIpOnScreen => Settings.ShowIpOnScreen;
 
-   protected IObservable<Unit> CancelStream => _cancelRequests.AsObservable();
+    public bool FlashOnSelect => Settings.FlashOnSelect;
 
-   protected void RequestCancel() => _cancelRequests.OnNext(Unit.Default);
+    public string HostIpAddress { get; } = GetLocalIpAddress();
 
-   protected void PushStatusMessage(string message) =>
-      _messageQueue.OnNext(Observable.Return(message));
+    private static string GetLocalIpAddress()
+    {
+        try
+        {
+            // Get all network interfaces that are up and not loopback
+            var networkInterface = NetworkInterface.GetAllNetworkInterfaces()
+               .Where(ni => ni.OperationalStatus == OperationalStatus.Up &&
+                            ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+               .FirstOrDefault();
 
-   protected void PushStatusMessage(IObservable<string> messageStream) =>
-      _messageQueue.OnNext(messageStream);
-
-   protected virtual void HandleCancel()
-   {
-      HandleStatusUpdate(CurrentStatus);
-   }
-
-   protected abstract void HandleStatusUpdate(IReadOnlyDictionary<string, string> newStatus);
-
-   private async Task LoadStationLogoAsync()
-   {
-      if (SwitcherClient.Instance.ServerUri == null)
-      {
-         Debug.WriteLine("Server URI is not configured. Cannot load station logo.");
-         return;
-      }
-
-      try
-      {
-         var logoUrl = new Uri(SwitcherClient.Instance.ServerUri, "/logo");
-         using var httpClient = new HttpClient();
-         var response = await httpClient.GetAsync(logoUrl).ConfigureAwait(false);
-
-         if (response.IsSuccessStatusCode)
-         {
-            var imageBytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-            await Dispatcher.UIThread.InvokeAsync(() =>
+            if (networkInterface != null)
             {
-               using var memoryStream = new MemoryStream(imageBytes);
-               StationLogo = new Bitmap(memoryStream);
-            });
-            Debug.WriteLine($"Successfully loaded station logo from {logoUrl}");
-         }
-         else
-         {
-            Debug.WriteLine($"Failed to load station logo. Status code: {response.StatusCode} from {logoUrl}");
-            StationLogo = null;
-         }
-      }
-      catch (HttpRequestException ex)
-      {
-         Debug.WriteLine($"Error loading station logo: {ex.Message}");
-         StationLogo = null;
-      }
-      catch (TaskCanceledException ex)
-      {
-         Debug.WriteLine($"Error loading station logo (timeout/cancelled): {ex.Message}");
-         StationLogo = null;
-      }
-      catch (Exception ex)
-      {
-         Debug.WriteLine($"An unexpected error occurred while loading station logo: {ex.Message}");
-      StationLogo = null;
-      }
-   }
+                var ipProps = networkInterface.GetIPProperties();
+                var ipv4Address = ipProps.UnicastAddresses
+                   .Where(ua => ua.Address.AddressFamily == AddressFamily.InterNetwork)
+                   .Select(ua => ua.Address)
+                   .FirstOrDefault();
 
-   public void Dispose()
-   {
-      _disposables.Dispose();
-   }
+                if (ipv4Address != null)
+                {
+                    return ipv4Address.ToString();
+                }
+            }
+
+            // Fallback: try to get any IPv4 address
+            var host = Dns.GetHostEntry(Dns.GetHostName());
+            var fallbackAddress = host.AddressList
+               .FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork);
+
+            return fallbackAddress?.ToString() ?? "Unknown IP";
+        }
+        catch
+        {
+            return "Unknown IP";
+        }
+    }
+
+    protected IObservable<Unit> CancelStream => _cancelRequests.AsObservable();
+
+    protected void RequestCancel() => _cancelRequests.OnNext(Unit.Default);
+
+    protected void PushStatusMessage(string message) =>
+       _messageQueue.OnNext(Observable.Return(message));
+
+    protected void PushStatusMessage(IObservable<string> messageStream) =>
+       _messageQueue.OnNext(messageStream);
+
+    protected virtual void HandleCancel()
+    {
+        HandleStatusUpdate(CurrentStatus);
+    }
+
+    protected abstract void HandleStatusUpdate(IReadOnlyDictionary<string, string> newStatus);
+
+    private async Task LoadStationLogoAsync()
+    {
+        if (SwitcherClient.Instance.ServerUri == null)
+        {
+            Debug.WriteLine("Server URI is not configured. Cannot load station logo.");
+            return;
+        }
+
+        try
+        {
+            var logoUrl = new Uri(SwitcherClient.Instance.ServerUri, "/logo");
+            using var httpClient = new HttpClient();
+            var response = await httpClient.GetAsync(logoUrl).ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var imageBytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    using var memoryStream = new MemoryStream(imageBytes);
+                    StationLogo = new Bitmap(memoryStream);
+                });
+                Debug.WriteLine($"Successfully loaded station logo from {logoUrl}");
+            }
+            else
+            {
+                Debug.WriteLine($"Failed to load station logo. Status code: {response.StatusCode} from {logoUrl}");
+                StationLogo = null;
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            Debug.WriteLine($"Error loading station logo: {ex.Message}");
+            StationLogo = null;
+        }
+        catch (TaskCanceledException ex)
+        {
+            Debug.WriteLine($"Error loading station logo (timeout/cancelled): {ex.Message}");
+            StationLogo = null;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"An unexpected error occurred while loading station logo: {ex.Message}");
+            StationLogo = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposables.Dispose();
+    }
 }

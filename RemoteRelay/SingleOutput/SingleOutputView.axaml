@@ -20,6 +20,17 @@
             <ColumnDefinition />
         </Grid.ColumnDefinitions>
 
+        <!-- IP Address in top left corner -->
+        <TextBlock Text="{Binding HostIpAddress}"
+                   Grid.Row="0"
+                   Grid.Column="0"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Top"
+                   Margin="15,5,0,0"
+                   FontSize="14"
+                   Foreground="Gray"
+                   IsVisible="{Binding ShowIpOnScreen}" />
+
         <Viewbox Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Stretch="Uniform">
             <Label FontStretch="Normal" 
                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Content="{Binding StatusMessage}"
