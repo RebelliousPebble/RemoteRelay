@@ -75,6 +75,7 @@
   "ServerPort": 33101,
   "TcpMirrorAddress": null,
   "TcpMirrorPort": null,
+  "UdpApiPort": null,
   "InactiveRelay": {
     "Pin": 25,
     "InactiveState": "High"

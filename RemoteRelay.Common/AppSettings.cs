@@ -70,6 +70,7 @@ public struct AppSettings
     public int ServerPort { get; set; }
     public string? TcpMirrorAddress { get; set; }
     public int? TcpMirrorPort { get; set; }
+    public int? UdpApiPort { get; set; }
 
     //Options
     public InactiveRelaySettings? InactiveRelay { get; set; }

@@ -123,6 +123,19 @@ public class Program
       builder.Services.AddHostedService(sp => sp.GetRequiredService<ConfigurationWatcher>());
       builder.Services.AddSingleton(new ConfigurationService(configPath));
 
+      // Register UDP listener service if port is configured
+      if (initialSettings.UdpApiPort.HasValue)
+      {
+         var udpPort = initialSettings.UdpApiPort.Value;
+         builder.Services.AddHostedService(sp =>
+         {
+            var switcherState = sp.GetRequiredService<SwitcherState>();
+            var hubContext = sp.GetRequiredService<IHubContext<RelayHub>>();
+            var logger = sp.GetRequiredService<ILogger<UdpListenerService>>();
+            return new UdpListenerService(switcherState, hubContext, logger, udpPort);
+         });
+      }
+
       builder.WebHost.ConfigureKestrel(options => { options.ListenAnyIP(initialSettings.ServerPort); });
 
       var app = builder.Build();
@@ -174,6 +187,75 @@ public class Program
             logger.LogError(ex, $"Error reading logo file: {logoPath}");
             return Results.Problem($"Error reading logo file: {ex.Message}");
          }
+      });
+
+      // HTTP API endpoint for external switching
+      // Usage: GET /switch?input=<name|index>&output=<name|index>
+      app.MapGet("/switch", async (HttpContext context, SwitcherState switcherState, IHubContext<RelayHub> hubContext, ILogger<Program> logger) =>
+      {
+         var inputParam = context.Request.Query["input"].ToString();
+         var outputParam = context.Request.Query["output"].ToString();
+
+         if (string.IsNullOrWhiteSpace(inputParam) || string.IsNullOrWhiteSpace(outputParam))
+         {
+            return Results.BadRequest(new { success = false, error = "Both 'input' and 'output' query parameters are required." });
+         }
+
+         var settings = switcherState.GetSettings();
+         var sources = settings.Sources.ToList();
+         var outputs = settings.Outputs.ToList();
+
+         // Resolve input name (by index or name)
+         string? inputName = null;
+         if (int.TryParse(inputParam, out int inputIndex) && inputIndex >= 1 && inputIndex <= sources.Count)
+         {
+            inputName = sources[inputIndex - 1];
+         }
+         else
+         {
+            inputName = sources.FirstOrDefault(s => s.Equals(inputParam, StringComparison.OrdinalIgnoreCase));
+         }
+
+         // Resolve output name (by index or name)
+         string? outputName = null;
+         if (int.TryParse(outputParam, out int outputIndex) && outputIndex >= 1 && outputIndex <= outputs.Count)
+         {
+            outputName = outputs[outputIndex - 1];
+         }
+         else
+         {
+            outputName = outputs.FirstOrDefault(o => o.Equals(outputParam, StringComparison.OrdinalIgnoreCase));
+         }
+
+         if (string.IsNullOrEmpty(inputName))
+         {
+            return Results.BadRequest(new { success = false, error = $"Input '{inputParam}' not found. Available: {string.Join(", ", sources)}" });
+         }
+
+         if (string.IsNullOrEmpty(outputName))
+         {
+            return Results.BadRequest(new { success = false, error = $"Output '{outputParam}' not found. Available: {string.Join(", ", outputs)}" });
+         }
+
+         // Verify route exists
+         var routeExists = settings.Routes.Any(r =>
+            string.Equals(r.SourceName, inputName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.OutputName, outputName, StringComparison.OrdinalIgnoreCase));
+
+         if (!routeExists)
+         {
+            return Results.BadRequest(new { success = false, error = $"Route '{inputName}' -> '{outputName}' does not exist." });
+         }
+
+         // Execute the switch
+         switcherState.SwitchSource(inputName, outputName);
+         logger.LogInformation("HTTP switch executed: {Input} -> {Output}", inputName, outputName);
+
+         // Broadcast state update to all SignalR clients
+         var state = switcherState.GetSystemState();
+         await hubContext.Clients.All.SendAsync("SystemState", state);
+
+         return Results.Ok(new { success = true, message = $"Switched {inputName} to {outputName}" });
       });
 
       app.Run();
