@@ -9,6 +9,7 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+  workflow_call:  # Allows this workflow to be called by other workflows
 
 jobs:
   build:

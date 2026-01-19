@@ -1,95 +1,68 @@
 name: Create Release
 
 on:
-  workflow_dispatch: # Allows manual triggering
-  push:
-    tags:
-      - 'v*.*.*' # Triggers on tags like v1.0.0, v1.2.3, v1.0.0-beta, etc.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes (supports markdown)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release?'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
-  build_and_release:
-    name: Build and Release
+  # Call the build workflow to produce artifacts
+  build:
+    uses: ./.github/workflows/dotnet.yml
+
+  # Create the release using artifacts from the build job
+  release:
+    name: Create GitHub Release
+    needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          dotnet-version: 9.0.x
+          path: ./artifacts
 
-      - name: Restore dependencies
-        run: dotnet restore RemoteRelay.sln
-
-      - name: Build
-        run: dotnet build RemoteRelay.sln --configuration Release --no-restore
-
-      - name: Publish RemoteRelay Client (Linux ARM64)
-        run: dotnet publish RemoteRelay/RemoteRelay.csproj --configuration Release /p:PublishProfile=FolderProfile -o ./publish/RemoteRelay-Client-linux-arm64
-
-      - name: Publish RemoteRelay Client (Win x64)
-        run: dotnet publish RemoteRelay/RemoteRelay.csproj --configuration Release /p:PublishProfile=FolderProfile1 -o ./publish/RemoteRelay-Client-win-x64
-
-      - name: Publish RemoteRelay.Server (Linux ARM64)
-        run: dotnet publish RemoteRelay.Server/RemoteRelay.Server.csproj --configuration Release /p:PublishProfile=FolderProfile -o ./publish/RemoteRelay-Server-linux-arm64
-
-      - name: Install makeself
-        run: sudo apt-get update && sudo apt-get install -y makeself
-
-      - name: Stage files for makeself
+      - name: Prepare release assets
         run: |
-          mkdir -p makeself_stage/client_files
-          mkdir -p makeself_stage/server_files
-          cp ./publish/RemoteRelay-Client-linux-arm64/RemoteRelay makeself_stage/client_files/
-          cp RemoteRelay/ServerDetails.json makeself_stage/client_files/
-          cp ./publish/RemoteRelay-Server-linux-arm64/RemoteRelay.Server makeself_stage/server_files/
-          cp RemoteRelay.Server/appsettings.json makeself_stage/server_files/
-          cp RemoteRelay.Server/config.json makeself_stage/server_files/
-          cp install.sh makeself_stage/install.sh
-          chmod +x makeself_stage/install.sh
+          cd artifacts
+          # Zip each artifact folder
+          for dir in */; do
+            name="${dir%/}"
+            # Skip if already a zip/sh file
+            if [[ "$name" == *.zip ]] || [[ "$name" == *.sh ]]; then
+              continue
+            fi
+            cd "$name"
+            if [[ "$name" == *Installer* ]]; then
+              # For installer, just move the .sh file up
+              mv *.sh "../${name}.sh" 2>/dev/null || true
+            else
+              zip -r "../${name}.zip" .
+            fi
+            cd ..
+            rm -rf "$name"
+          done
+          ls -la
 
-      - name: Run makeself
-        run: makeself ./makeself_stage ./remote-relay-installer.sh "RemoteRelay Installer" ./install.sh
-
-      - name: Zip RemoteRelay Client (Linux ARM64)
-        run: |
-          cd ./publish/RemoteRelay-Client-linux-arm64
-          zip -r ../../RemoteRelay-Client-linux-arm64.zip .
-          cd ../..
-
-      - name: Zip RemoteRelay Client (Win x64)
-        run: |
-          cd ./publish/RemoteRelay-Client-win-x64
-          zip -r ../../RemoteRelay-Client-win-x64.zip .
-          cd ../..
-
-      - name: Zip RemoteRelay.Server (Linux ARM64)
-        run: |
-          cd ./publish/RemoteRelay-Server-linux-arm64
-          zip -r ../../RemoteRelay-Server-linux-arm64.zip .
-          cd ../..
-
-      - name: Upload RemoteRelay Client (Linux ARM64) to Release
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: RemoteRelay-Client-linux-arm64.zip
-          path: ./RemoteRelay-Client-linux-arm64.zip
-
-      - name: Upload RemoteRelay Client (Win x64) to Release
-        uses: actions/upload-artifact@v4
-        with:
-          name: RemoteRelay-Client-win-x64.zip
-          path: ./RemoteRelay-Client-win-x64.zip
-
-      - name: Upload RemoteRelay.Server (Linux ARM64) to Release
-        uses: actions/upload-artifact@v4
-        with:
-          name: RemoteRelay-Server-linux-arm64.zip
-          path: ./RemoteRelay-Server-linux-arm64.zip
-
-      - name: Upload RemoteRelay Installer (Raspberry Pi) to Release
-        uses: actions/upload-artifact@v4
-        with:
-          name: remote-relay-installer.sh
-          path: ./remote-relay-installer.sh
+          tag_name: ${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          body: ${{ inputs.release_notes }}
+          prerelease: ${{ inputs.prerelease }}
+          files: |
+            ./artifacts/*
