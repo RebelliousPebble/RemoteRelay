@@ -98,13 +98,13 @@ echo "Step 5: Publishing RemoteRelay Client for ${TARGET_RUNTIME}..."
 # If not, you might need to add --runtime ${TARGET_RUNTIME} --self-contained true to the publish command,
 # or ensure 'RemoteRelay/Properties/PublishProfiles/FolderProfile.pubxml' specifies <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>.
 # We explicitely add --runtime here to override/ensure it matches the requested target.
-dotnet publish "${CLIENT_PROJECT_FILE}" --configuration "${CONFIGURATION}" --runtime "${TARGET_RUNTIME}" --self-contained true -o "${CLIENT_PUBLISH_DIR}"
+dotnet publish "${CLIENT_PROJECT_FILE}" --configuration "${CONFIGURATION}" --runtime "${TARGET_RUNTIME}" /p:PublishProfile=LinuxSelfContained -o "${CLIENT_PUBLISH_DIR}"
 echo "Client publish complete. Output: ${CLIENT_PUBLISH_DIR}"
 echo ""
 
 echo "Step 6: Publishing RemoteRelay Server for ${TARGET_RUNTIME}..."
 # Similar assumption for 'RemoteRelay.Server/Properties/PublishProfiles/FolderProfile.pubxml'
-dotnet publish "${SERVER_PROJECT_FILE}" --configuration "${CONFIGURATION}" --runtime "${TARGET_RUNTIME}" --self-contained true -o "${SERVER_PUBLISH_DIR}"
+dotnet publish "${SERVER_PROJECT_FILE}" --configuration "${CONFIGURATION}" --runtime "${TARGET_RUNTIME}" /p:PublishProfile=LinuxSelfContained -o "${SERVER_PUBLISH_DIR}"
 echo "Server publish complete. Output: ${SERVER_PUBLISH_DIR}"
 echo ""
 
