@@ -21,6 +21,7 @@
         <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.1" />
         <PackageReference Include="System.Device.Gpio" Version="4.0.1" />
         <PackageReference Include="System.Net.Sockets" Version="4.3.0" />
+        <PackageReference Include="Zeroconf" Version="3.7.16" />
     </ItemGroup>
 
     <ItemGroup>

@@ -12,6 +12,8 @@ using RemoteRelay.Common;
 using RemoteRelay.MultiOutput;
 using RemoteRelay.Setup;
 using RemoteRelay.SingleOutput;
+using Zeroconf;
+using System.Reactive.Disposables;
 
 namespace RemoteRelay;
 
@@ -23,6 +25,7 @@ public class MainWindowViewModel : ViewModelBase
     private ClientConfig _clientConfig;
     private const string ConfigFileName = "ClientConfig.json";
     private AppSettings? _currentSettings;
+    private IDisposable? _clientSubscriptions;
 
     private string _serverStatusMessage = string.Empty;
     public string ServerStatusMessage
@@ -88,10 +91,25 @@ public class MainWindowViewModel : ViewModelBase
 
         OpenSetupCommand = ReactiveCommand.Create(OpenSetup);
 
+        OpenSetupCommand = ReactiveCommand.Create(OpenSetup);
+
+        InitClient();
+
+        _ = InitializeConnectionAsync();
+    }
+
+    private void InitClient()
+    {
         var serverUri = new Uri($"http://{_clientConfig.Host}:{_clientConfig.Port}/relay");
         SwitcherClient.InitializeInstance(serverUri);
+        SetupClientSubscriptions();
+    }
 
-        SwitcherClient.Instance.SettingsUpdates
+    private void SetupClientSubscriptions()
+    {
+        var disposables = new CompositeDisposable();
+
+        disposables.Add(SwitcherClient.Instance.SettingsUpdates
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(settings =>
             {
@@ -101,10 +119,10 @@ public class MainWindowViewModel : ViewModelBase
                 {
                     ApplySettings(settings);
                 }
-                ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri} (settings refreshed at {DateTime.Now:T})";
-            });
+                ServerStatusMessage = $"Connected to {SwitcherClient.Instance.ServerUri} (settings updated {DateTime.Now:T})";
+            }));
 
-        SwitcherClient.Instance.CompatibilityUpdates
+        disposables.Add(SwitcherClient.Instance.CompatibilityUpdates
            .ObserveOn(RxApp.MainThreadScheduler)
            .Subscribe(status =>
            {
@@ -120,19 +138,25 @@ public class MainWindowViewModel : ViewModelBase
                        UpdateMessage = string.Empty;
                        break;
                }
-           });
+           }));
 
         // Subscribe to connection state changes
-        SwitcherClient.Instance._connectionStateChanged.Subscribe(isConnected =>
+        disposables.Add(SwitcherClient.Instance._connectionStateChanged.Subscribe(isConnected =>
         {
             if (!isConnected)
             {
                 OperationViewModel = null;
                 StartRetryTimer();
             }
-        });
+        }));
 
-        _ = InitializeConnectionAsync();
+        _clientSubscriptions = disposables;
+    }
+
+    private void DisposeClientSubscriptions()
+    {
+        _clientSubscriptions?.Dispose();
+        _clientSubscriptions = null;
     }
 
     private void OpenSetup()
@@ -208,6 +232,52 @@ public class MainWindowViewModel : ViewModelBase
 
     private async Task InitializeConnectionAsync()
     {
+        // Auto-discovery if configured for localhost
+        if (_clientConfig.IsLocalhost)
+        {
+            ServerStatusMessage = "Scanning for RemoteRelay server...";
+            try
+            {
+                // Quick scan (2 seconds)
+                var results = await ZeroconfResolver.ResolveAsync("_remoterelay._tcp.local.", TimeSpan.FromSeconds(2));
+                var firstResult = results.FirstOrDefault();
+
+                if (firstResult != null)
+                {
+                    var service = firstResult.Services.Values.FirstOrDefault();
+                    var ip = firstResult.IPAddresses.FirstOrDefault();
+
+                    if (service != null && ip != null)
+                    {
+                        var newHost = ip.ToString();
+                        var newPort = service.Port;
+
+                        // Only update if different
+                        if (!_clientConfig.Host.Equals(newHost, StringComparison.OrdinalIgnoreCase) || _clientConfig.Port != newPort)
+                        {
+                            ServerStatusMessage = $"Found server at {newHost}:{newPort}. Connecting...";
+
+                            _clientConfig.Host = newHost;
+                            _clientConfig.Port = newPort;
+                            SaveConfig();
+
+                            // Update SetupButton visibility based on new config (likely hidden now)
+                            ShowSetupButton = _clientConfig.IsLocalhost;
+
+                            // Re-initialize client
+                            DisposeClientSubscriptions();
+                            await SwitcherClient.ResetInstanceAsync();
+                            InitClient();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Auto-discovery failed: {ex.Message}");
+            }
+        }
+
         if (await SwitcherClient.Instance.ConnectAsync())
         {
             await OnConnected();

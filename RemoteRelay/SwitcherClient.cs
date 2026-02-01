@@ -78,9 +78,20 @@ public class SwitcherClient
     {
         lock (_lock)
         {
-            // if (_instance == null) _instance = new SwitcherClient(hubUri);
             if (_instance == null)
                 _instance = new SwitcherClient(hubUri);
+        }
+    }
+
+    public static async Task ResetInstanceAsync()
+    {
+        if (_instance != null)
+        {
+            await _instance._connection.DisposeAsync();
+            lock (_lock)
+            {
+                _instance = null;
+            }
         }
     }
 

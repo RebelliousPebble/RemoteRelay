@@ -375,6 +375,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Change to the client directory
 cd "$SCRIPT_DIR" || exit 1
 
+# Check for ARMv8.1+ features (like lse) to handle older CPUs (e.g. Pi 3)
+# If 'lse' is missing from cpuinfo, disable .NET use of LSE instructions/intrinsics
+if [ -f /proc/cpuinfo ]; then
+  if ! grep -q "lse" /proc/cpuinfo && ! grep -q "atomics" /proc/cpuinfo; then
+     echo "Detected CPU missing LSE/Atomics (likely Pi 3). Disabling DOTNET_EnableHWIntrinsic and DOTNET_EnableLse."
+     export DOTNET_EnableHWIntrinsic=0
+     export DOTNET_EnableLse=0
+  fi
+fi
+
 # Enable logging for debugging autostart issues
 exec >> "$SCRIPT_DIR/client.log" 2>&1
 echo "[$(date)] Starting RemoteRelay Client"
@@ -563,21 +573,33 @@ update_client_files() {
   SUMMARY+=("Desktop shortcut created at $USER_HOME/Desktop/RemoteRelay.desktop")
 }
 
-update_server_details_host() {
+update_client_config_host() {
   local server_address="$1"
-  local server_details="$CLIENT_INSTALL_DIR/ServerDetails.json"
-  if [ -f "$server_details" ]; then
+  local client_config="$CLIENT_INSTALL_DIR/ClientConfig.json"
+  if [ -f "$client_config" ]; then
     local tmp
     tmp=$(mktemp)
-    local escaped_address
-    escaped_address=$(printf '%s' "$server_address" | sed -e 's/[\\/&]/\\&/g')
-    if sed -E "s/(\"Host\"\s*:\s*\")([^\"]*)(\")/\\1$escaped_address\\3/" "$server_details" > "$tmp"; then
-      mv "$tmp" "$server_details"
-      chown "$APP_USER:$APP_USER" "$server_details"
-      SUMMARY+=("Updated client host to $server_address")
+    # Using jq if available is safer, but fallback to sed if needed?
+    # The script checks for jq dependency at start now, so let's try jq first if possible,
+    # but to be safe and consistent with the legacy sed approach (which preserves comments better sometimes, though json shouldn't have them):
+    
+    if command -v jq >/dev/null 2>&1; then
+       # update valid json with jq
+       jq --arg host "$server_address" '.Host = $host' "$client_config" > "$tmp" && mv "$tmp" "$client_config"
+       chown "$APP_USER:$APP_USER" "$client_config"
+       SUMMARY+=("Updated client host to $server_address")
     else
-      echo "Warning: failed to update $server_details" >&2
-      rm -f "$tmp"
+       # fallback to sed
+        local escaped_address
+        escaped_address=$(printf '%s' "$server_address" | sed -e 's/[\\/&]/\\&/g')
+        if sed -E "s/(\"Host\"\s*:\s*\")([^\"]*)(\")/\\1$escaped_address\\3/" "$client_config" > "$tmp"; then
+          mv "$tmp" "$client_config"
+          chown "$APP_USER:$APP_USER" "$client_config"
+          SUMMARY+=("Updated client host to $server_address")
+        else
+          echo "Warning: failed to update $client_config" >&2
+          rm -f "$tmp"
+        fi
     fi
   fi
 }
@@ -666,6 +688,15 @@ fi
 SERVER_ADDRESS=""
 if $DO_INSTALL_CLIENT; then
   local_default="localhost"
+  
+  # Try to read existing config for default
+  if command -v jq >/dev/null 2>&1 && [ -f "$CLIENT_INSTALL_DIR/ClientConfig.json" ]; then
+      existing_host=$(jq -r '.Host // empty' "$CLIENT_INSTALL_DIR/ClientConfig.json")
+      if [ -n "$existing_host" ]; then
+          local_default="$existing_host"
+      fi
+  fi
+  
   read -r -p "Server address for clients [$local_default]: " SERVER_ADDRESS
   SERVER_ADDRESS=${SERVER_ADDRESS:-$local_default}
 fi
@@ -676,7 +707,7 @@ fi
 
 if $DO_INSTALL_CLIENT; then
   update_client_files
-  update_server_details_host "$SERVER_ADDRESS"
+  update_client_config_host "$SERVER_ADDRESS"
 fi
 
 copy_uninstall_script

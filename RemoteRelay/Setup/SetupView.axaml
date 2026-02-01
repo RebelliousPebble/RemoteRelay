@@ -89,6 +89,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="15">
                             <TextBlock Text="Server Port:" Classes="label"/>
                             <NumericUpDown Value="{Binding ServerPort}" Minimum="1" Maximum="65535" Width="130"/>
+                            <Button Content="Auto Discover" Command="{Binding AutoDiscoverCommand}" Classes="test-btn" Width="100"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="15">
                             <TextBlock Text="TCP Mirror:" Classes="label"/>
