@@ -1,12 +1,4 @@
 {
   "Host": "localhost",
-  "Port": 33101,
-  "ShownInputs": [
-    "Input 1",
-    "Input 2"
-  ],
-  "ShownOutputs": [
-    "Output 1",
-    "Output 2"
-  ]
+  "Port": 33101
 }

@@ -48,11 +48,11 @@ public class SingleOutputViewModel : OperationViewModelBase
             x?.SetState(SourceState.Selected);
             if (x is null) return;
 
-          // Flash the selected input if FlashOnSelect is enabled
-          if (FlashOnSelect)
+            // Flash the selected input if FlashOnSelect is enabled
+            if (FlashOnSelect)
             {
-              // Use a bright orange color for single output mode
-              x.StartFlashAnimation(Colors.Orange);
+                // Use a bright orange color for single output mode
+                x.StartFlashAnimation(Colors.Orange);
             }
 
             PushStatusMessage(
@@ -78,8 +78,8 @@ public class SingleOutputViewModel : OperationViewModelBase
            {
                RequestCancel();
 
-          // Check if server is connected before attempting to switch
-          if (!Server.IsConnected)
+               // Check if server is connected before attempting to switch
+               if (!Server.IsConnected)
                {
                    PushStatusMessage("Server connection lost. Please wait for reconnection.");
                    return;
@@ -117,18 +117,23 @@ public class SingleOutputViewModel : OperationViewModelBase
         if (newStatus.Count != 0)
         {
             foreach (var pair in newStatus)
+            {
+                var input = Inputs.FirstOrDefault(x => x.SourceName == pair.Key);
+                if (input == null) continue;
+
                 if (!string.IsNullOrEmpty(pair.Value))
                 {
                     Debug.WriteLine($"{pair.Key} is active");
-                    Inputs.First(x => x.SourceName == pair.Key).SetState(SourceState.Active);
+                    input.SetState(SourceState.Active);
                     PushStatusMessage($"{pair.Key} routed to {pair.Value}");
                 }
                 // Set all others to inactive
                 else
                 {
                     Debug.WriteLine($"{pair.Key} is inactive");
-                    Inputs.First(x => x.SourceName == pair.Key).SetState(SourceState.Inactive);
+                    input.SetState(SourceState.Inactive);
                 }
+            }
 
         }
         else
