@@ -40,6 +40,17 @@ jobs:
           -p:PublishTrimmed=false \
           -o ./publish/server-linux-arm64
 
+    # ======== Server Build (linux-arm) ========
+    - name: Publish Server - linux-arm
+      run: |
+        dotnet publish RemoteRelay.Server/RemoteRelay.Server.csproj \
+          --configuration Release \
+          --runtime linux-arm \
+          --self-contained true \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -o ./publish/server-linux-arm
+
     # ======== Client Builds (multi-platform) ========
     - name: Publish Client - win-x64
       run: |
@@ -71,12 +82,28 @@ jobs:
           -p:PublishTrimmed=false \
           -o ./publish/client-linux-arm64
 
+    - name: Publish Client - linux-arm
+      run: |
+        dotnet publish RemoteRelay/RemoteRelay.csproj \
+          --configuration Release \
+          --runtime linux-arm \
+          --self-contained true \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -o ./publish/client-linux-arm
+
     # ======== Upload Artifacts ========
     - name: Upload Server - linux-arm64
       uses: actions/upload-artifact@v4
       with:
         name: RemoteRelay-Server-linux-arm64
         path: ./publish/server-linux-arm64
+
+    - name: Upload Server - linux-arm
+      uses: actions/upload-artifact@v4
+      with:
+        name: RemoteRelay-Server-linux-arm
+        path: ./publish/server-linux-arm
 
     - name: Upload Client - win-x64
       uses: actions/upload-artifact@v4
@@ -96,35 +123,34 @@ jobs:
         name: RemoteRelay-Client-linux-arm64
         path: ./publish/client-linux-arm64
 
-    # ======== Makeself Installer (linux-arm64) ========
+    - name: Upload Client - linux-arm
+      uses: actions/upload-artifact@v4
+      with:
+        name: RemoteRelay-Client-linux-arm
+        path: ./publish/client-linux-arm
+
+    # ======== Makeself Installers ========
     - name: Install makeself
       run: sudo apt-get update && sudo apt-get install -y makeself
 
-    - name: Create makeself installer
+    - name: Create makeself installers
       run: |
-        # Create staging directory
-        mkdir -p makeself_stage/client_files
-        mkdir -p makeself_stage/server_files
+        chmod +x create_makeself_installer.sh
         
-        # Copy published files
-        cp -a ./publish/client-linux-arm64/. makeself_stage/client_files/
-        cp -a ./publish/server-linux-arm64/. makeself_stage/server_files/
+        # Generate for linux-arm64
+        ./create_makeself_installer.sh linux-arm64
         
-        # Copy and prepare scripts
-        cp install.sh makeself_stage/
-        cp uninstall.sh makeself_stage/
-        cp update.sh makeself_stage/
-        
-        # Ensure Unix line endings and executable
-        sed -i 's/\r$//' makeself_stage/*.sh
-        chmod +x makeself_stage/*.sh
-        
-        # Create the installer
-        makeself --gzip makeself_stage remote-relay-installer-linux-arm64.sh \
-          "RemoteRelay Installer (linux-arm64)" ./install.sh
+        # Generate for linux-arm
+        ./create_makeself_installer.sh linux-arm
 
-    - name: Upload Makeself Installer
+    - name: Upload Makeself Installer - linux-arm64
       uses: actions/upload-artifact@v4
       with:
         name: RemoteRelay-Installer-linux-arm64
         path: ./remote-relay-installer-linux-arm64.sh
+
+    - name: Upload Makeself Installer - linux-arm
+      uses: actions/upload-artifact@v4
+      with:
+        name: RemoteRelay-Installer-linux-arm
+        path: ./remote-relay-installer-linux-arm.sh

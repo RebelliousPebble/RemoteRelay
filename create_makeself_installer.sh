@@ -12,7 +12,13 @@ SOLUTION_FILE="RemoteRelay.sln"
 CLIENT_PROJECT_FILE="RemoteRelay/RemoteRelay.csproj"
 SERVER_PROJECT_FILE="RemoteRelay.Server/RemoteRelay.Server.csproj"
 CONFIGURATION="Release"
-TARGET_RUNTIME="linux-arm64" # As per GH action
+
+# Default to linux-arm64 if no argument provided
+if [ -z "$1" ]; then
+  TARGET_RUNTIME="linux-arm64"
+else
+  TARGET_RUNTIME="$1"
+fi
 
 PUBLISH_DIR_BASE="./publish" # Relative to script location (project root)
 CLIENT_PUBLISH_DIR="${PUBLISH_DIR_BASE}/RemoteRelay-Client-${TARGET_RUNTIME}"
@@ -65,7 +71,12 @@ echo "Prerequisites met."
 echo ""
 
 echo "Step 2: Cleaning up previous artifacts..."
-rm -rf "${PUBLISH_DIR_BASE}"
+# Only clean specifically for the target runtime to avoid wiping other parallel builds if we were doing that,
+# but for simplicity, we wipe the stage dir which is shared.
+# PUBLISH_DIR_BASE contains specific subdirs, so we can leave it or clean it.
+# Let's clean the specific publish dirs to be safe.
+rm -rf "${CLIENT_PUBLISH_DIR}"
+rm -rf "${SERVER_PUBLISH_DIR}"
 rm -rf "${MAKSELF_STAGE_DIR}"
 rm -f "${INSTALLER_NAME}"
 echo "Cleanup complete."
@@ -86,13 +97,14 @@ echo "Step 5: Publishing RemoteRelay Client for ${TARGET_RUNTIME}..."
 # This script assumes 'FolderProfile' is configured for linux-arm64 or that the project targets it by default for this profile.
 # If not, you might need to add --runtime ${TARGET_RUNTIME} --self-contained true to the publish command,
 # or ensure 'RemoteRelay/Properties/PublishProfiles/FolderProfile.pubxml' specifies <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>.
-dotnet publish "${CLIENT_PROJECT_FILE}" --configuration "${CONFIGURATION}" /p:PublishProfile=FolderProfile -o "${CLIENT_PUBLISH_DIR}"
+# We explicitely add --runtime here to override/ensure it matches the requested target.
+dotnet publish "${CLIENT_PROJECT_FILE}" --configuration "${CONFIGURATION}" --runtime "${TARGET_RUNTIME}" --self-contained true -o "${CLIENT_PUBLISH_DIR}"
 echo "Client publish complete. Output: ${CLIENT_PUBLISH_DIR}"
 echo ""
 
 echo "Step 6: Publishing RemoteRelay Server for ${TARGET_RUNTIME}..."
 # Similar assumption for 'RemoteRelay.Server/Properties/PublishProfiles/FolderProfile.pubxml'
-dotnet publish "${SERVER_PROJECT_FILE}" --configuration "${CONFIGURATION}" /p:PublishProfile=FolderProfile -o "${SERVER_PUBLISH_DIR}"
+dotnet publish "${SERVER_PROJECT_FILE}" --configuration "${CONFIGURATION}" --runtime "${TARGET_RUNTIME}" --self-contained true -o "${SERVER_PUBLISH_DIR}"
 echo "Server publish complete. Output: ${SERVER_PUBLISH_DIR}"
 echo ""
 
