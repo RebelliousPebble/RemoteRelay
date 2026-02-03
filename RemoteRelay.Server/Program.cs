@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR; // Added for IHubContext
 using Microsoft.Extensions.Logging;
@@ -14,6 +15,8 @@ namespace RemoteRelay.Server;
 
 public class Program
 {
+    private static readonly string ErrorLogPath = Path.Combine(AppContext.BaseDirectory, "server_error.log");
+    private static readonly DateTime StartTime = DateTime.UtcNow;
     // Helper method to determine GPIO environment
     private static bool IsGpiEnvironment(bool useMockGpio)
     {
@@ -30,9 +33,13 @@ public class Program
 
     public static void Main(string[] args)
     {
+        // Set up global exception handlers for crash prevention
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
         if (args.Length > 0 && args[0] == "--version")
         {
-            Console.WriteLine(RemoteRelay.Common.VersionHelper.GetVersion());
+            Console.WriteLine(VersionHelper.GetVersion());
             return;
         }
         if (args.Length == 5 && args[0] == "set-inactive-relay" && args[1] == "--pin" && args[3] == "--state")
@@ -100,7 +107,20 @@ public class Program
             return; // Exit Main after handling command-line operation
         }
 
-        // --- Existing Web Server Startup Code ---
+        // --- Web Server Startup Code ---
+        try
+        {
+            RunWebServer(args);
+        }
+        catch (Exception ex)
+        {
+            LogException("Server startup crash", ex);
+            throw;
+        }
+    }
+
+    private static void RunWebServer(string[] args)
+    {
         var configPath = Path.Combine(AppContext.BaseDirectory, "config.json");
         var initialSettings = LoadInitialSettings(configPath);
 
@@ -146,6 +166,15 @@ public class Program
 
         app.MapGet("/", () => "This is a SignalR Server for Remote Relay, the hub is hosted at /relay");
         app.MapHub<RelayHub>("/relay");
+
+        // Health check endpoint for monitoring
+        app.MapGet("/health", () => Results.Ok(new
+        {
+            status = "healthy",
+            version = VersionHelper.GetVersion(),
+            uptime = (DateTime.UtcNow - StartTime).ToString(@"d\.hh\:mm\:ss"),
+            timestamp = DateTime.UtcNow.ToString("o")
+        }));
 
         // Configure application shutdown behavior
         var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
@@ -290,5 +319,34 @@ public class Program
         }
 
         return settings;
+    }
+
+    private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception ex)
+        {
+            LogException("Unhandled exception", ex);
+        }
+    }
+
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        LogException("Unobserved task exception", e.Exception);
+        e.SetObserved(); // Prevent crash from unobserved task exceptions
+    }
+
+    private static void LogException(string context, Exception ex)
+    {
+        try
+        {
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            var logEntry = $"[{timestamp}] {context}: {ex}\n\n";
+            File.AppendAllText(ErrorLogPath, logEntry);
+            Console.Error.WriteLine($"[{timestamp}] {context}: {ex.Message}");
+        }
+        catch
+        {
+            // Don't throw from the exception handler
+        }
     }
 }

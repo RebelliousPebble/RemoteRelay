@@ -22,7 +22,7 @@ public class MainWindowViewModel : ViewModelBase
     private const int RetryIntervalSeconds = 5;
     private System.Timers.Timer? _retryTimer;
     private int _retryCountdown;
-    private ClientConfig _clientConfig;
+    private ClientConfig _clientConfig = new();
     private const string ConfigFileName = "ClientConfig.json";
     private AppSettings? _currentSettings;
     private IDisposable? _clientSubscriptions;
@@ -196,12 +196,15 @@ public class MainWindowViewModel : ViewModelBase
             {
                 // Migrate from ServerDetails
                 var serverInfo = JsonSerializer.Deserialize<ServerDetails>(File.ReadAllText("ServerDetails.json"));
-                _clientConfig = new ClientConfig
+                if (serverInfo != null)
                 {
-                    Host = serverInfo.Host,
-                    Port = serverInfo.Port
-                };
-                SaveConfig();
+                    _clientConfig = new ClientConfig
+                    {
+                        Host = serverInfo.Host,
+                        Port = serverInfo.Port
+                    };
+                    SaveConfig();
+                }
             }
             catch (Exception ex)
             {
@@ -304,29 +307,38 @@ public class MainWindowViewModel : ViewModelBase
         _retryTimer = new System.Timers.Timer(1000); // 1 second interval
         _retryTimer.Elapsed += async (sender, e) =>
         {
-            if (_retryCountdown > 0)
+            try
             {
-                _retryCountdown--;
-                UpdateServerStatusMessageForRetry();
+                if (_retryCountdown > 0)
+                {
+                    _retryCountdown--;
+                    UpdateServerStatusMessageForRetry();
+                }
+
+                if (_retryCountdown <= 0)
+                {
+                    _retryTimer?.Stop();
+                    _retryTimer?.Dispose();
+                    _retryTimer = null;
+
+                    ServerStatusMessage = $"Server offline. Trying to connect to {SwitcherClient.Instance.ServerUri}. Retrying now...";
+
+                    bool connected = await SwitcherClient.Instance.ConnectAsync();
+                    if (connected)
+                    {
+                        await OnConnected();
+                    }
+                    else
+                    {
+                        StartRetryTimer();
+                    }
+                }
             }
-
-            if (_retryCountdown <= 0)
+            catch (Exception ex)
             {
-                _retryTimer?.Stop();
-                _retryTimer?.Dispose();
-                _retryTimer = null;
-
-                ServerStatusMessage = $"Server offline. Trying to connect to {SwitcherClient.Instance.ServerUri}. Retrying now...";
-
-                bool connected = await SwitcherClient.Instance.ConnectAsync();
-                if (connected)
-                {
-                    await OnConnected();
-                }
-                else
-                {
-                    StartRetryTimer();
-                }
+                Debug.WriteLine($"Error in retry timer: {ex.Message}");
+                // Restart retry timer on error - don't let exceptions kill the reconnection loop
+                StartRetryTimer();
             }
         };
         _retryTimer.Start();

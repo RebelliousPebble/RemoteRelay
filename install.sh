@@ -3,11 +3,77 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+INSTALLER_VERSION="1.0.0"
+
+# Display version for support purposes
+echo "RemoteRelay Installer v${INSTALLER_VERSION}"
+echo ""
 
 if [ "$EUID" -ne 0 ]; then
   echo "Error: This installer must be run as root (sudo)." >&2
   exit 1
 fi
+
+# Trap handler for cleanup on failure
+CLEANUP_NEEDED=false
+cleanup_on_failure() {
+  if [ "$CLEANUP_NEEDED" = true ]; then
+    echo ""
+    echo "Installation failed. Any partial changes have been preserved." >&2
+    echo "Check the error messages above for details." >&2
+  fi
+}
+trap cleanup_on_failure EXIT
+
+# Check disk space (require at least 200MB free)
+check_disk_space() {
+  local required_mb=200
+  local available_kb
+  available_kb=$(df -k "${1:-/}" | awk 'NR==2 {print $4}')
+  local available_mb=$((available_kb / 1024))
+  
+  if [ "$available_mb" -lt "$required_mb" ]; then
+    echo "Error: Insufficient disk space. Required: ${required_mb}MB, Available: ${available_mb}MB" >&2
+    exit 1
+  fi
+  echo "Disk space check passed (${available_mb}MB available)"
+}
+
+# Detect and validate architecture
+detect_architecture() {
+  local arch
+  arch=$(uname -m)
+  local installer_arch=""
+  
+  # Check if 'file' command is available for architecture detection
+  if ! command -v file >/dev/null 2>&1; then
+    echo "Note: 'file' command not found, skipping architecture validation"
+    echo "Architecture: $arch"
+    return 0
+  fi
+  
+  # Determine what architecture this installer was built for
+  if [ -d "$SCRIPT_DIR/server_files" ]; then
+    # Check the binary to see what it was compiled for
+    if file "$SCRIPT_DIR/server_files/RemoteRelay.Server" 2>/dev/null | grep -q "ARM aarch64"; then
+      installer_arch="aarch64"
+    elif file "$SCRIPT_DIR/server_files/RemoteRelay.Server" 2>/dev/null | grep -q "ARM,"; then
+      installer_arch="armv7l"
+    elif file "$SCRIPT_DIR/server_files/RemoteRelay.Server" 2>/dev/null | grep -q "x86-64"; then
+      installer_arch="x86_64"
+    fi
+  fi
+  
+  if [ -n "$installer_arch" ] && [ "$arch" != "$installer_arch" ]; then
+    echo "Warning: This installer was built for $installer_arch but you are running on $arch." >&2
+    echo "The application may not work correctly." >&2
+    if ! prompt_yes_no "Continue anyway? [y/N] " "N"; then
+      exit 1
+    fi
+  else
+    echo "Architecture: $arch"
+  fi
+}
 
 install_dependencies() {
   if command -v apt-get >/dev/null 2>&1; then
@@ -35,6 +101,9 @@ if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
   echo "Error: Could not resolve home directory for $APP_USER." >&2
   exit 1
 fi
+
+# Run pre-flight checks
+check_disk_space "$USER_HOME"
 
 BASE_INSTALL_DIR="$USER_HOME/RemoteRelay"
 SERVER_INSTALL_DIR="$BASE_INSTALL_DIR/server"
@@ -65,6 +134,9 @@ prompt_yes_no() {
     echo "Please answer yes or no (y/n)."
   done
 }
+
+# Run architecture check now that prompt_yes_no is defined
+detect_architecture
 
 ensure_dir_owned_by_user() {
   local dir="$1"
@@ -367,7 +439,12 @@ create_client_launcher() {
   cat > "$launcher_script" <<'EOF'
 #!/bin/bash
 # RemoteRelay Client Launcher Script
-# Sets up environment and launches the client
+# Sets up environment and launches the client with watchdog restart
+
+# Configuration
+MAX_RESTART_ATTEMPTS=5
+RESTART_DELAY=5
+DISPLAY_WAIT_TIMEOUT=30
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -387,19 +464,71 @@ fi
 
 # Enable logging for debugging autostart issues
 exec >> "$SCRIPT_DIR/client.log" 2>&1
-echo "[$(date)] Starting RemoteRelay Client"
+echo ""
+echo "=========================================="
+echo "[$(date)] Starting RemoteRelay Client Launcher"
 echo "Working directory: $(pwd)"
 echo "Script directory: $SCRIPT_DIR"
 echo "Display: $DISPLAY"
 echo "Wayland display: $WAYLAND_DISPLAY"
 echo "XDG_SESSION_TYPE: $XDG_SESSION_TYPE"
 
-# Wait a bit for the desktop environment to fully initialize
-sleep 3
+# Wait for display server to be ready
+wait_for_display() {
+    local waited=0
+    echo "[$(date)] Waiting for display server..."
+    
+    while [ $waited -lt $DISPLAY_WAIT_TIMEOUT ]; do
+        # Check for Wayland
+        if [ -n "$WAYLAND_DISPLAY" ] && [ -e "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+            echo "[$(date)] Wayland display ready"
+            return 0
+        fi
+        
+        # Check for X11
+        if [ -n "$DISPLAY" ]; then
+            if command -v xdpyinfo >/dev/null 2>&1 && xdpyinfo >/dev/null 2>&1; then
+                echo "[$(date)] X11 display ready"
+                return 0
+            fi
+        fi
+        
+        sleep 1
+        waited=$((waited + 1))
+    done
+    
+    echo "[$(date)] Warning: Display server check timed out, attempting to continue anyway"
+    return 1
+}
 
-# Launch the client
-echo "[$(date)] Launching RemoteRelay binary"
-exec "$SCRIPT_DIR/RemoteRelay"
+# Wait a bit for the desktop environment to fully initialize, then check display
+sleep 3
+wait_for_display
+
+# Watchdog restart loop
+restart_count=0
+
+while [ $restart_count -lt $MAX_RESTART_ATTEMPTS ]; do
+    echo "[$(date)] Launching RemoteRelay binary (attempt $((restart_count + 1))/$MAX_RESTART_ATTEMPTS)"
+    
+    "$SCRIPT_DIR/RemoteRelay"
+    exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        echo "[$(date)] RemoteRelay exited normally"
+        break
+    fi
+    
+    restart_count=$((restart_count + 1))
+    echo "[$(date)] RemoteRelay exited with code $exit_code"
+    
+    if [ $restart_count -lt $MAX_RESTART_ATTEMPTS ]; then
+        echo "[$(date)] Restarting in $RESTART_DELAY seconds..."
+        sleep $RESTART_DELAY
+    else
+        echo "[$(date)] Max restart attempts reached. Giving up."
+    fi
+done
 EOF
 
   chmod +x "$launcher_script"
@@ -716,6 +845,9 @@ if $DO_INSTALL_CLIENT; then
   fi
 fi
 
+# Mark that we're now modifying the system
+CLEANUP_NEEDED=true
+
 if $DO_INSTALL_SERVER; then
   update_server_files
 fi
@@ -731,6 +863,46 @@ copy_update_script
 chown -R "$APP_USER:$APP_USER" "$BASE_INSTALL_DIR"
 
 cleanup_backup_dir
+
+# Verification step
+echo ""
+echo "Verifying installation..."
+VERIFY_FAILED=false
+
+if $DO_INSTALL_SERVER; then
+  if [ -x "$SERVER_INSTALL_DIR/RemoteRelay.Server" ]; then
+    echo "  ✓ Server binary is executable"
+    
+    # Check if service can be queried
+    if systemctl is-enabled "$SERVER_SERVICE_NAME" >/dev/null 2>&1; then
+      echo "  ✓ Server service is enabled"
+    else
+      echo "  ⚠ Server service may not be enabled properly"
+    fi
+  else
+    echo "  ✗ Server binary is missing or not executable" >&2
+    VERIFY_FAILED=true
+  fi
+fi
+
+if $DO_INSTALL_CLIENT; then
+  if [ -x "$CLIENT_INSTALL_DIR/RemoteRelay" ]; then
+    echo "  ✓ Client binary is executable"
+  else
+    echo "  ✗ Client binary is missing or not executable" >&2
+    VERIFY_FAILED=true
+  fi
+fi
+
+if [ "$VERIFY_FAILED" = true ]; then
+  echo ""
+  echo "⚠ Installation completed with warnings. Check the messages above." >&2
+else
+  echo "  ✓ All verification checks passed"
+fi
+
+# Installation succeeded - disable cleanup trap
+CLEANUP_NEEDED=false
 
 echo
 echo "----------------------------------------------------"

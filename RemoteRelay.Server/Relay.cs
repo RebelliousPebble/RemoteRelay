@@ -6,7 +6,6 @@ namespace RemoteRelay.Server;
 public class Source
 {
    private readonly Dictionary<string, (GpioPin Pin, RelayConfig Config)> _relayOutputPins;
-   private GpioPin? _gpiButtonInputPin;
 
    public Source(string sourceName)
    {

@@ -4,6 +4,10 @@ set -e
 # RemoteRelay Updater Script
 # Checks for updates on GitHub and installs them over the current installation.
 
+UPDATE_SCRIPT_VERSION="1.0.0"
+echo "RemoteRelay Updater v${UPDATE_SCRIPT_VERSION}"
+echo ""
+
 GITHUB_REPO="RebelliousPebble/RemoteRelay"
 INSTALL_DIR_BASE="/home/$SUDO_USER/RemoteRelay" # Approximation, refined below
 if [ -z "$SUDO_USER" ]; then
@@ -14,6 +18,57 @@ USER_HOME=$(eval echo ~$SUDO_USER)
 BASE_INSTALL_DIR="$USER_HOME/RemoteRelay"
 SERVER_INSTALL_DIR="$BASE_INSTALL_DIR/server"
 CLIENT_INSTALL_DIR="$BASE_INSTALL_DIR/client"
+BACKUP_DIR="$USER_HOME/.remoterelay-backups"
+
+# Network connectivity check
+check_network() {
+    echo "Checking network connectivity..."
+    if ! curl -s --connect-timeout 5 "https://api.github.com" >/dev/null 2>&1; then
+        echo "Error: Cannot reach GitHub. Check your network connection." >&2
+        exit 1
+    fi
+    echo "  ✓ Network connectivity OK"
+}
+
+# Create backup before update
+create_backup() {
+    local timestamp
+    timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_path="$BACKUP_DIR/backup_$timestamp"
+    
+    echo "Creating backup before update..."
+    mkdir -p "$backup_path"
+    
+    # Backup config files
+    if [ -d "$SERVER_INSTALL_DIR" ]; then
+        mkdir -p "$backup_path/server"
+        cp "$SERVER_INSTALL_DIR/config.json" "$backup_path/server/" 2>/dev/null || true
+        cp "$SERVER_INSTALL_DIR/appsettings.json" "$backup_path/server/" 2>/dev/null || true
+    fi
+    
+    if [ -d "$CLIENT_INSTALL_DIR" ]; then
+        mkdir -p "$backup_path/client"
+        cp "$CLIENT_INSTALL_DIR/ClientConfig.json" "$backup_path/client/" 2>/dev/null || true
+    fi
+    
+    echo "  ✓ Backup created at $backup_path"
+    
+    # Maintain only last 3 backups
+    cleanup_old_backups
+}
+
+cleanup_old_backups() {
+    local backup_count
+    backup_count=$(find "$BACKUP_DIR" -maxdepth 1 -type d -name "backup_*" 2>/dev/null | wc -l)
+    
+    if [ "$backup_count" -gt 3 ]; then
+        echo "  Cleaning up old backups (keeping last 3)..."
+        # Use null-terminated strings for safety with special characters in paths
+        find "$BACKUP_DIR" -maxdepth 1 -type d -name "backup_*" -print0 | sort -z | head -z -n $((backup_count - 3)) | xargs -0 rm -rf
+    fi
+}
+
+check_network
 
 echo "Checking for updates..."
 
@@ -56,6 +111,10 @@ if [ $(version_to_int "$LATEST_VERSION") -le $(version_to_int "$LOCAL_VERSION") 
 fi
 
 echo "Update available!"
+
+# Create backup before proceeding
+create_backup
+
 echo "Downloading installer..."
 
 # Find asset URL for linux-arm64
@@ -68,28 +127,31 @@ fi
 
 TEMP_INSTALLER="/tmp/remoterelay_update_installer.sh"
 curl -L -o "$TEMP_INSTALLER" "$ASSET_URL"
+
+# Verify download
+if [ ! -f "$TEMP_INSTALLER" ]; then
+    echo "Error: Download failed - file not found." >&2
+    exit 1
+fi
+
+DOWNLOAD_SIZE=$(stat -c%s "$TEMP_INSTALLER" 2>/dev/null || stat -f%z "$TEMP_INSTALLER" 2>/dev/null || echo "0")
+if [ "$DOWNLOAD_SIZE" -lt 10000 ]; then
+    echo "Error: Downloaded file is too small ($DOWNLOAD_SIZE bytes). Download may be corrupted." >&2
+    rm -f "$TEMP_INSTALLER"
+    exit 1
+fi
+
+echo "  ✓ Download verified ($DOWNLOAD_SIZE bytes)"
+
 chmod +x "$TEMP_INSTALLER"
 
 echo "Running installer..."
-# Run the installer. check if we need to auto-confirm
-# Since install.sh asks questions, we might want to automate it or let the user interact.
-# The user asked: "install it over the top of the old install with all settings intact"
+# Run the installer. The user will see the prompts.
 # The existing install.sh detects existing installation and asks "Update server component? [Y/n]"
-# We can pipe "Y\nY\n" or similar if we want fully automated, or just let the user interact.
-# But for a true "auto-update", we should probably try to automate.
-# However, `install.sh` uses `read -r -p` which reads from stdin.
-# We can try to assume Yes for everything if we want, or just exec it.
-# Let's exec it so the user sees the installer UI. The user triggered the update script likely manually or via UI (if we hook it up later).
-# The prompt says "can we add in an update script...".
-# "Installs it over the top... if server/client were both installed, update both".
-
-# To automate: we could construct the inputs based on what is installed.
-# But `install.sh` defaults to Y for updates if installed.
-# So pressing Enter is enough.
-
-# Let's just run it. The user will see the prompts.
+# It defaults to Y for updates if installed, so pressing Enter is enough.
 "$TEMP_INSTALLER"
 
 # Cleanup
 rm -f "$TEMP_INSTALLER"
 echo "Update complete."
+
