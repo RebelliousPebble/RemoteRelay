@@ -687,18 +687,33 @@ fi
 
 SERVER_ADDRESS=""
 if $DO_INSTALL_CLIENT; then
-  local_default="localhost"
-  
-  # Try to read existing config for default
-  if command -v jq >/dev/null 2>&1 && [ -f "$CLIENT_INSTALL_DIR/ClientConfig.json" ]; then
-      existing_host=$(jq -r '.Host // empty' "$CLIENT_INSTALL_DIR/ClientConfig.json")
-      if [ -n "$existing_host" ]; then
-          local_default="$existing_host"
-      fi
+  # Scenario 1: Installing BOTH Server and Client -> Default to localhost silently
+  if $DO_INSTALL_SERVER; then
+     echo "Installing both server and client: defaulting client to localhost."
+     SERVER_ADDRESS="localhost"
+  else
+     # Scenario 2: Installing Client ONLY (or updating)
+     # We still want to respect existing config if updating
+     local_default=""
+     
+     if command -v jq >/dev/null 2>&1 && [ -f "$CLIENT_INSTALL_DIR/ClientConfig.json" ]; then
+         existing_host=$(jq -r '.Host // empty' "$CLIENT_INSTALL_DIR/ClientConfig.json")
+         if [ -n "$existing_host" ]; then
+             local_default="$existing_host"
+         fi
+     fi
+
+     # If no existing config (fresh install), default is empty (implies auto-discovery via localhost)
+     # We prompt the user.
+     if [ -n "$local_default" ]; then
+        read -r -p "Server address for client [$local_default]: " input_addr
+        SERVER_ADDRESS=${input_addr:-$local_default}
+     else
+        read -r -p "Server address for client (leave empty for auto-discovery): " input_addr
+        # If empty, use localhost which triggers auto-discovery in the app
+        SERVER_ADDRESS=${input_addr:-"localhost"}
+     fi
   fi
-  
-  read -r -p "Server address for clients [$local_default]: " SERVER_ADDRESS
-  SERVER_ADDRESS=${SERVER_ADDRESS:-$local_default}
 fi
 
 if $DO_INSTALL_SERVER; then
