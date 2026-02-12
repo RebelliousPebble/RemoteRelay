@@ -370,17 +370,64 @@ public class MainWindowViewModel : ViewModelBase
 
     private void ApplySettings(AppSettings settings)
     {
-        // Auto-populate filters if empty
+        // Handle unconfigured server
+        if (!settings.IsConfigured)
+        {
+            if (_clientConfig.IsLocalhost)
+            {
+                _currentSettings = settings;
+                OperationViewModel = new SetupViewModel(settings, CloseSetup);
+                ServerStatusMessage = "Server not configured. Please set up routes below.";
+            }
+            else
+            {
+                OperationViewModel = null;
+                ServerStatusMessage = "Server is not configured. Please configure the server from a local client.";
+            }
+            return;
+        }
+
+        // Reconcile filters against current server state
         bool configUpdated = false;
+
         if (_clientConfig.ShownInputs == null)
         {
             _clientConfig.ShownInputs = settings.Sources.ToList();
             configUpdated = true;
         }
+        else
+        {
+            var serverSources = new HashSet<string>(settings.Sources, StringComparer.OrdinalIgnoreCase);
+            // Remove stale entries that no longer exist on server
+            int removed = _clientConfig.ShownInputs.RemoveAll(s => !serverSources.Contains(s));
+            // Add new server entries not yet in filter
+            foreach (var source in settings.Sources)
+            {
+                if (!_clientConfig.ShownInputs.Contains(source, StringComparer.OrdinalIgnoreCase))
+                    _clientConfig.ShownInputs.Add(source);
+            }
+            if (removed > 0 || _clientConfig.ShownInputs.Count != settings.Sources.Count)
+                configUpdated = true;
+        }
+
         if (_clientConfig.ShownOutputs == null)
         {
             _clientConfig.ShownOutputs = settings.Outputs.ToList();
             configUpdated = true;
+        }
+        else
+        {
+            var serverOutputs = new HashSet<string>(settings.Outputs, StringComparer.OrdinalIgnoreCase);
+            // Remove stale entries that no longer exist on server
+            int removed = _clientConfig.ShownOutputs.RemoveAll(s => !serverOutputs.Contains(s));
+            // Add new server entries not yet in filter
+            foreach (var output in settings.Outputs)
+            {
+                if (!_clientConfig.ShownOutputs.Contains(output, StringComparer.OrdinalIgnoreCase))
+                    _clientConfig.ShownOutputs.Add(output);
+            }
+            if (removed > 0 || _clientConfig.ShownOutputs.Count != settings.Outputs.Count)
+                configUpdated = true;
         }
 
         if (configUpdated)

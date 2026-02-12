@@ -98,6 +98,8 @@ public struct AppSettings
     public IReadOnlyCollection<string> Sources => Routes?.Select(x => x.SourceName).Distinct().ToArray() ?? Array.Empty<string>();
     public IReadOnlyCollection<string> Outputs => Routes?.Select(x => x.OutputName).Distinct().ToArray() ?? Array.Empty<string>();
 
+    public bool IsConfigured => Routes != null && Routes.Count > 0;
+
 
     // Properties moved up to group them, constructor added above.
 }

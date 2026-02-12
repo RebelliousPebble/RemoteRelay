@@ -1,0 +1,23 @@
+  Determining projects to restore...
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\RemoteRelay.csproj : warning NU1510: PackageReference System.Net.Sockets will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary. [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.sln]
+  All projects are up-to-date for restore.
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Common\RelayConfig.cs(8,19): warning CS8618: Non-nullable property 'SourceName' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the property as nullable. [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Common\RemoteRelay.Common.csproj]
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Common\RelayConfig.cs(9,19): warning CS8618: Non-nullable property 'OutputName' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the property as nullable. [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Common\RemoteRelay.Common.csproj]
+  RemoteRelay.Common -> C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Common\bin\Debug\net10.0\RemoteRelay.Common.dll
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\RemoteRelay.csproj : warning NU1510: PackageReference System.Net.Sockets will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary.
+  RemoteRelay.Server -> C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Server\bin\Debug\net10.0\RemoteRelay.Server.dll
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\MainWindowViewModel.cs(14,7): warning CS0105: The using directive for 'RemoteRelay.Setup' appeared previously in this namespace [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\RemoteRelay.csproj]
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\MainWindowViewModel.cs(28,26): error CS0102: The type 'MainWindowViewModel' already contains a definition for 'ConfigFileName' [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\RemoteRelay.csproj]
+
+Build FAILED.
+
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\RemoteRelay.csproj : warning NU1510: PackageReference System.Net.Sockets will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary. [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.sln]
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Common\RelayConfig.cs(8,19): warning CS8618: Non-nullable property 'SourceName' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the property as nullable. [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Common\RemoteRelay.Common.csproj]
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Common\RelayConfig.cs(9,19): warning CS8618: Non-nullable property 'OutputName' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the property as nullable. [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay.Common\RemoteRelay.Common.csproj]
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\RemoteRelay.csproj : warning NU1510: PackageReference System.Net.Sockets will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary.
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\MainWindowViewModel.cs(14,7): warning CS0105: The using directive for 'RemoteRelay.Setup' appeared previously in this namespace [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\RemoteRelay.csproj]
+C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\MainWindowViewModel.cs(28,26): error CS0102: The type 'MainWindowViewModel' already contains a definition for 'ConfigFileName' [C:\Users\glenn\source\repos\RemoteRelay\RemoteRelay\RemoteRelay.csproj]
+    5 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:03.15

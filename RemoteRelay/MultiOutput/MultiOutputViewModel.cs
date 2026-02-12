@@ -154,9 +154,11 @@ public class MultiOutputViewModel : OperationViewModelBase
             return;
         }
 
-        var outputAssignments = newStatus
-            .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
-            .ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
+        var outputAssignments = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in newStatus.Where(p => !string.IsNullOrWhiteSpace(p.Value)))
+        {
+            outputAssignments[pair.Value] = pair.Key; // Last writer wins if duplicates exist
+        }
 
         foreach (var input in Inputs)
         {

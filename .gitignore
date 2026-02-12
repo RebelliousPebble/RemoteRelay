@@ -10,3 +10,8 @@ riderModule.iml
 makeself_stage
 publish
 remote-relay-installer-linux-arm64.sh
+
+# Runtime-generated config files
+config.json
+ClientConfig.json
+ServerDetails.json

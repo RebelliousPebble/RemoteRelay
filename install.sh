@@ -757,6 +757,32 @@ copy_update_script() {
   fi
 }
 
+configure_ntp() {
+  local ntp_servers="$1"
+  if [ -z "$ntp_servers" ]; then
+    return
+  fi
+
+  echo "Configuring NTP servers: $ntp_servers"
+
+  # Back up existing config
+  if [ -f /etc/systemd/timesyncd.conf ]; then
+    cp /etc/systemd/timesyncd.conf /etc/systemd/timesyncd.conf.bak
+    echo "  Backed up existing timesyncd.conf to timesyncd.conf.bak"
+  fi
+
+  # Write new timesyncd config
+  cat > /etc/systemd/timesyncd.conf <<EOF
+[Time]
+NTP=$ntp_servers
+EOF
+
+  # Restart timesyncd to apply
+  systemctl restart systemd-timesyncd 2>/dev/null || true
+  echo "NTP servers configured and timesyncd restarted."
+  SUMMARY+=("NTP servers configured: $ntp_servers")
+}
+
 echo "----------------------------------------------------"
 echo "$(bold "RemoteRelay Installer")"
 echo "----------------------------------------------------"
@@ -845,6 +871,14 @@ if $DO_INSTALL_CLIENT; then
   fi
 fi
 
+NTP_SERVERS=""
+if prompt_yes_no "Configure custom NTP servers? [y/N] " "N"; then
+  read -r -p "Enter NTP server addresses (space-separated): " NTP_SERVERS
+  if [ -z "$NTP_SERVERS" ]; then
+    echo "No NTP servers entered, skipping."
+  fi
+fi
+
 # Mark that we're now modifying the system
 CLEANUP_NEEDED=true
 
@@ -859,6 +893,7 @@ fi
 
 copy_uninstall_script
 copy_update_script
+configure_ntp "$NTP_SERVERS"
 
 chown -R "$APP_USER:$APP_USER" "$BASE_INSTALL_DIR"
 

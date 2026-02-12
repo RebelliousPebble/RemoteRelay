@@ -37,10 +37,7 @@ public static class AppSettingsValidator
     private static void ValidateRoutes(AppSettings settings, List<string> errors)
     {
         if (settings.Routes == null || settings.Routes.Count == 0)
-        {
-            errors.Add("At least one route must be configured.");
-            return;
-        }
+            return; // Empty routes = unconfigured but valid
 
         var seen = new HashSet<(string Source, string Output)>(new RouteEqualityComparer());
         foreach (var route in settings.Routes)
