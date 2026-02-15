@@ -100,6 +100,33 @@ public class SingleOutputViewModel : OperationViewModelBase
                    .StartWith("Waiting for response from server"));
            }));
 
+        // Off button – clears the selected input's routing
+        OffButton = new SourceButtonViewModel("Off");
+
+        Disposables.Add(OffButton.Clicked
+           .WithLatestFrom(selected, (_, input) => input)
+           .Where(input => input != null)
+           .Subscribe(input =>
+           {
+               RequestCancel();
+
+               if (!Server.IsConnected)
+               {
+                   PushStatusMessage("Server connection lost. Please wait for reconnection.");
+                   return;
+               }
+
+               var inputName = input!.SourceName;
+               PushStatusMessage($"Clearing route for {inputName}...");
+               Server.ClearSource(inputName);
+
+               PushStatusMessage(
+                   Observable
+                      .Return("No response received from server")
+                      .Delay(TimeSpan.FromSeconds(TimeoutSeconds))
+                      .StartWith("Waiting for response from server"));
+           }));
+
         Disposables.Add(selected
            .DistinctUntilChanged()
            .Where(x => x == null)
@@ -109,6 +136,8 @@ public class SingleOutputViewModel : OperationViewModelBase
     public IEnumerable<SourceButtonViewModel> Inputs { get; }
 
     public SourceButtonViewModel Output { get; } = new("Confirm");
+
+    public SourceButtonViewModel OffButton { get; }
 
     protected override void HandleStatusUpdate(IReadOnlyDictionary<string, string> newStatus)
     {

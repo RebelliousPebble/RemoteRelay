@@ -18,6 +18,7 @@
             <ColumnDefinition />
             <ColumnDefinition />
             <ColumnDefinition />
+            <ColumnDefinition />
         </Grid.ColumnDefinitions>
 
         <!-- IP Address in top left corner -->
@@ -31,7 +32,17 @@
                    Foreground="Gray"
                    IsVisible="{Binding ShowIpOnScreen}" />
 
-        <Viewbox Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Stretch="Uniform">
+        <!-- Clock in top right corner -->
+        <TextBlock Text="{Binding CurrentTime}"
+                   Grid.Row="0"
+                   Grid.Column="3"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Top"
+                   Margin="0,5,15,0"
+                   FontSize="14"
+                   Foreground="Gray" />
+
+        <Viewbox Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4" Stretch="Uniform">
             <Label FontStretch="Normal" 
                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Content="{Binding StatusMessage}"
                    HorizontalContentAlignment="Center"
@@ -41,7 +52,7 @@
 
         <!-- The buttons for source selection -->
         <ItemsControl ItemsSource="{Binding Inputs}"
-                      Grid.ColumnSpan="3"
+                      Grid.ColumnSpan="4"
                       Grid.Column="0"
                       Grid.Row="1"
                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
@@ -60,15 +71,20 @@
         </ItemsControl>
 
 
-        <!-- The buttons for cancel and confirm -->
+        <!-- The buttons for cancel, off, and confirm -->
         <ContentControl Content="{Binding Cancel}"
                         Grid.Row="2"
                         Grid.Column="0"
                         Margin="10" />
 
+        <ContentControl Content="{Binding OffButton}"
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        Margin="10" />
+
         <Image Source="{Binding StationLogo}"
                Grid.Row="2"
-               Grid.Column="1"
+               Grid.Column="2"
                Margin="10"
                Stretch="Uniform"
                HorizontalAlignment="Center"
@@ -76,7 +92,7 @@
 
         <ContentControl Content="{Binding Output}"
                         Grid.Row="2"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         Margin="10" />
     </Grid>
 

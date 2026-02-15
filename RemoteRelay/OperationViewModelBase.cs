@@ -28,6 +28,8 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
 
     private Bitmap? _stationLogo;
     private string _statusMessage = string.Empty;
+    private string _currentTime = DateTime.Now.ToString("HH:mm:ss");
+    private readonly DispatcherTimer _clockTimer;
 
     protected OperationViewModelBase(AppSettings settings, int timeoutSeconds = 3)
     {
@@ -71,6 +73,11 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
             SwitcherClient.Instance.RequestStatus();
         }
 
+        // Real-time clock
+        _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _clockTimer.Tick += (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss");
+        _clockTimer.Start();
+
         _ = LoadStationLogoAsync();
     }
 
@@ -91,6 +98,12 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
     {
         get => _statusMessage;
         protected set => this.RaiseAndSetIfChanged(ref _statusMessage, value);
+    }
+
+    public string CurrentTime
+    {
+        get => _currentTime;
+        private set => this.RaiseAndSetIfChanged(ref _currentTime, value);
     }
 
     public Bitmap? StationLogo
@@ -208,6 +221,7 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        _clockTimer.Stop();
         _disposables.Dispose();
     }
 }

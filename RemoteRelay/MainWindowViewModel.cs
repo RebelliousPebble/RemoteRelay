@@ -87,7 +87,7 @@ public class MainWindowViewModel : ViewModelBase
         LoadOrMigrateConfig();
 
         // Setup button is only shown when connected to localhost
-        ShowSetupButton = _clientConfig.IsLocalhost;
+        ShowSetupButton = _clientConfig.IsLocalConnection;
 
         OpenSetupCommand = ReactiveCommand.Create(OpenSetup);
 
@@ -236,7 +236,7 @@ public class MainWindowViewModel : ViewModelBase
     private async Task InitializeConnectionAsync()
     {
         // Auto-discovery if configured for localhost
-        if (_clientConfig.IsLocalhost)
+        if (_clientConfig.IsLocalConnection)
         {
             ServerStatusMessage = "Scanning for RemoteRelay server...";
             try
@@ -265,7 +265,7 @@ public class MainWindowViewModel : ViewModelBase
                             SaveConfig();
 
                             // Update SetupButton visibility based on new config (likely hidden now)
-                            ShowSetupButton = _clientConfig.IsLocalhost;
+                            ShowSetupButton = _clientConfig.IsLocalConnection;
 
                             // Re-initialize client
                             DisposeClientSubscriptions();
@@ -373,7 +373,7 @@ public class MainWindowViewModel : ViewModelBase
         // Handle unconfigured server
         if (!settings.IsConfigured)
         {
-            if (_clientConfig.IsLocalhost)
+            if (_clientConfig.IsLocalConnection)
             {
                 _currentSettings = settings;
                 OperationViewModel = new SetupViewModel(settings, CloseSetup);

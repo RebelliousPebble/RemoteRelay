@@ -139,6 +139,24 @@ public class SwitcherClient
         }
     }
 
+    public void ClearSource(string sourceName)
+    {
+        if (!IsConnected)
+        {
+            System.Diagnostics.Debug.WriteLine("Cannot clear source: connection is not active");
+            return;
+        }
+
+        try
+        {
+            _connection.SendAsync("ClearSource", sourceName);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error sending ClearSource command: {ex.Message}");
+        }
+    }
+
     public void RequestStatus()
     {
         if (!IsConnected)

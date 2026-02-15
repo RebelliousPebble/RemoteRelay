@@ -120,6 +120,27 @@ public class SwitcherState : IDisposable
         }
     }
 
+    public void ClearSource(string sourceName)
+    {
+        lock (_stateLock)
+        {
+            Console.WriteLine($"ClearSource called: sourceName='{sourceName}'");
+
+            var source = _sources.FirstOrDefault(x =>
+                string.Equals(x._sourceName, sourceName, StringComparison.OrdinalIgnoreCase));
+
+            if (source != null)
+            {
+                Console.WriteLine($"Disabling all outputs for source '{sourceName}'");
+                source.DisableOutput();
+            }
+            else
+            {
+                Console.WriteLine($"ClearSource: source '{sourceName}' not found");
+            }
+        }
+    }
+
     private void SendTcpMessageForRoute(string source, string output)
     {
         // Check if TCP endpoint is configured

@@ -65,8 +65,8 @@ public class MultiOutputViewModel : OperationViewModelBase
                     UpdateOutputAvailability(current.SourceName);
                     current.SetState(SourceState.Selected);
 
-                // Flash the selected input if FlashOnSelect is enabled
-                if (FlashOnSelect)
+                    // Flash the selected input if FlashOnSelect is enabled
+                    if (FlashOnSelect)
                     {
                         var flashColor = ResolveColour(current.SourceName);
                         current.StartFlashAnimation(flashColor);
@@ -125,6 +125,41 @@ public class MultiOutputViewModel : OperationViewModelBase
                     .StartWith($"Waiting for {outputName} confirmation..."));
         }));
 
+        // Off button – clears the selected input's routing
+        OffButton = new SourceButtonViewModel("Off");
+        OffButton.IsEnabled = false;
+
+        Disposables.Add(selectedInputStream
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(current =>
+            {
+                OffButton.IsEnabled = current != null;
+            }));
+
+        Disposables.Add(OffButton.Clicked
+            .WithLatestFrom(selectedInputStream, (_, input) => input)
+            .Where(input => input != null)
+            .Subscribe(input =>
+            {
+                RequestCancel();
+
+                if (!Server.IsConnected)
+                {
+                    PushStatusMessage("Server connection lost. Please wait for reconnection.");
+                    return;
+                }
+
+                var inputName = input!.SourceName;
+                PushStatusMessage($"Clearing route for {inputName}...");
+                Server.ClearSource(inputName);
+
+                PushStatusMessage(
+                    Observable
+                        .Return("No response received from server")
+                        .Delay(TimeSpan.FromSeconds(TimeoutSeconds))
+                        .StartWith($"Waiting for confirmation..."));
+            }));
+
         Disposables.Add(selectedInputStream
             .Where(vm => vm == null)
             .Subscribe(_ => HandleCancel()));
@@ -133,6 +168,8 @@ public class MultiOutputViewModel : OperationViewModelBase
     public IReadOnlyList<SourceButtonViewModel> Inputs { get; }
 
     public IReadOnlyList<SourceButtonViewModel> Outputs { get; }
+
+    public SourceButtonViewModel OffButton { get; }
 
     protected override void HandleStatusUpdate(IReadOnlyDictionary<string, string> newStatus)
     {

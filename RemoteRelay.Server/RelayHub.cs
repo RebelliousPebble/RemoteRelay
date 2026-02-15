@@ -39,6 +39,15 @@ public class RelayHub : Hub
         await Clients.All.SendAsync("SystemState", state);
     }
 
+    public async Task ClearSource(string sourceName)
+    {
+        if (!string.IsNullOrWhiteSpace(sourceName))
+        {
+            _switcherState.ClearSource(sourceName);
+            await GetSystemState();
+        }
+    }
+
     public async Task GetConfiguration()
     {
         await Clients.Caller.SendAsync("Configuration", _switcherState.GetSettings());
