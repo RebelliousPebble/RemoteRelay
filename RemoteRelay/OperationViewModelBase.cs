@@ -29,6 +29,7 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
     private Bitmap? _stationLogo;
     private string _statusMessage = string.Empty;
     private string _currentTime = DateTime.Now.ToString("HH:mm:ss");
+    private string _currentDate = DateTime.Now.ToString("dddd d MMMM yyyy");
     private readonly DispatcherTimer _clockTimer;
 
     protected OperationViewModelBase(AppSettings settings, int timeoutSeconds = 3)
@@ -75,7 +76,11 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
 
         // Real-time clock
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _clockTimer.Tick += (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss");
+        _clockTimer.Tick += (_, _) =>
+        {
+            CurrentTime = DateTime.Now.ToString("HH:mm:ss");
+            CurrentDate = DateTime.Now.ToString("dddd d MMMM yyyy");
+        };
         _clockTimer.Start();
 
         _ = LoadStationLogoAsync();
@@ -104,6 +109,12 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
     {
         get => _currentTime;
         private set => this.RaiseAndSetIfChanged(ref _currentTime, value);
+    }
+
+    public string CurrentDate
+    {
+        get => _currentDate;
+        private set => this.RaiseAndSetIfChanged(ref _currentDate, value);
     }
 
     public Bitmap? StationLogo

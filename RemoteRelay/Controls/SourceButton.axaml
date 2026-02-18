@@ -10,23 +10,24 @@
     <UserControl.Resources>
         <ControlTheme x:Key="{x:Type Button}" TargetType="Button">
             <Style Selector="^:pointerover">
-                <Setter Property="Background" Value="{Binding BackgroundColor}"/>
+                <Setter Property="Background" Value="{Binding BackgroundColor}" />
             </Style>
         </ControlTheme>
     </UserControl.Resources>
 
     <Button Command="{Binding SelectSource}"
-        IsEnabled="{Binding IsEnabled}"
+            IsEnabled="{Binding IsEnabled}"
             Background="{Binding BackgroundColor}"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            HorizontalContentAlignment="Stretch" 
-            VerticalContentAlignment="Stretch" 
-            Padding="15,45,15,45" 
+            HorizontalContentAlignment="Stretch"
+            VerticalContentAlignment="Stretch"
+            Padding="10,15,10,15"
             BorderBrush="Gray"
             BorderThickness="5">
         <Viewbox Stretch="Uniform">
-            <TextBlock Text="{Binding SourceName}" Foreground="{Binding ForegroundColor}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="10" />
+            <TextBlock Text="{Binding SourceName}" Foreground="{Binding ForegroundColor}" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" Padding="10" />
         </Viewbox>
     </Button>
 

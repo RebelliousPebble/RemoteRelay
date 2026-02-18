@@ -32,18 +32,28 @@
                    Foreground="Gray"
                    IsVisible="{Binding ShowIpOnScreen}" />
 
-        <!-- Clock in top right corner -->
-        <TextBlock Text="{Binding CurrentTime}"
-                   Grid.Row="0"
-                   Grid.Column="3"
-                   HorizontalAlignment="Right"
-                   VerticalAlignment="Top"
-                   Margin="0,5,15,0"
-                   FontSize="14"
-                   Foreground="Gray" />
+        <!-- Date and Clock in top center -->
+        <StackPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,5,0,0">
+            <TextBlock Text="{Binding CurrentDate}"
+                       FontSize="28"
+                       FontWeight="Bold"
+                       Foreground="White"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="  ·  "
+                       FontSize="28"
+                       Foreground="Gray"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="{Binding CurrentTime}"
+                       FontSize="28"
+                       FontWeight="Bold"
+                       Foreground="White"
+                       VerticalAlignment="Center" />
+        </StackPanel>
 
         <Viewbox Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4" Stretch="Uniform">
-            <Label FontStretch="Normal" 
+            <Label FontStretch="Normal"
                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Content="{Binding StatusMessage}"
                    HorizontalContentAlignment="Center"
                    VerticalContentAlignment="Center"
@@ -88,7 +98,7 @@
                Margin="10"
                Stretch="Uniform"
                HorizontalAlignment="Center"
-               VerticalAlignment="Center"/>
+               VerticalAlignment="Center" />
 
         <ContentControl Content="{Binding Output}"
                         Grid.Row="2"

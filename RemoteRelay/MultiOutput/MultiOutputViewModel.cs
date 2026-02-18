@@ -171,6 +171,8 @@ public class MultiOutputViewModel : OperationViewModelBase
 
     public SourceButtonViewModel OffButton { get; }
 
+    public bool UseVerticalLayout => Inputs.Count <= 2 && Outputs.Count <= 2;
+
     protected override void HandleStatusUpdate(IReadOnlyDictionary<string, string> newStatus)
     {
         PushStatusMessage("Updating...");
