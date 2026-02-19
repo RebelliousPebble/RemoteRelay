@@ -67,19 +67,19 @@
                    Padding="20" />
         </Viewbox>
 
-        <!-- Vertical layout for ≤2 inputs/outputs: inputs above, outputs below -->
+        <!-- Layout for ≤2 inputs/outputs: inputs left, outputs right, stacked vertically -->
         <Grid Grid.Row="1" Margin="20,10"
               IsVisible="{Binding UseVerticalLayout}">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="1*" />
-                <RowDefinition Height="1*" />
-            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
 
-            <ItemsControl Grid.Row="0"
+            <ItemsControl Grid.Column="0"
                           ItemsSource="{Binding Inputs}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <UniformGrid Rows="1" />
+                        <UniformGrid Columns="1" />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemContainerTheme>
@@ -91,11 +91,11 @@
                 </ItemsControl.ItemContainerTheme>
             </ItemsControl>
 
-            <ItemsControl Grid.Row="1"
+            <ItemsControl Grid.Column="1"
                           ItemsSource="{Binding Outputs}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <UniformGrid Rows="1" />
+                        <UniformGrid Columns="1" />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemContainerTheme>
