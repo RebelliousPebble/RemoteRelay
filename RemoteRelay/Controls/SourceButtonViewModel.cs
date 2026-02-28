@@ -13,7 +13,7 @@ namespace RemoteRelay.Controls;
 public class SourceButtonViewModel : ViewModelBase
 {
     private readonly BehaviorSubject<SourceState> _state = new(SourceState.Inactive);
-    private SolidColorBrush _backgroundColor = new(Colors.Gray);
+    private SolidColorBrush _backgroundColor = new(Colors.DarkSlateBlue);
     private SolidColorBrush _foregroundColor = new(Colors.White);
     private Color _linkedColor = Colors.Gray;
     private bool _isEnabled = true;
@@ -44,7 +44,7 @@ public class SourceButtonViewModel : ViewModelBase
 
                var bg = tuple.state switch
                {
-                   SourceState.Inactive => Colors.Gray,
+                   SourceState.Inactive => Colors.DarkSlateBlue,
                    SourceState.Selected => Colors.Red,
                    SourceState.Active => Colors.Red,
                    SourceState.Linked => _linkedColor,

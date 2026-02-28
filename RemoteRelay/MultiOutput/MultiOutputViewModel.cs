@@ -126,7 +126,7 @@ public class MultiOutputViewModel : OperationViewModelBase
         }));
 
         // Off button – clears the selected input's routing
-        OffButton = new SourceButtonViewModel("Off");
+        OffButton = new SourceButtonViewModel("Unroute");
         OffButton.IsEnabled = false;
 
         Disposables.Add(selectedInputStream

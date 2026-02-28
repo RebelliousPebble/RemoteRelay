@@ -36,6 +36,7 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
     {
         Settings = settings;
         TimeoutSeconds = timeoutSeconds;
+        _showIpOnScreen = settings.ShowIpOnScreen;
         Cancel = new SourceButtonViewModel("Cancel");
 
         Cancel.Clicked.Subscribe(_ => _cancelRequests.OnNext(Unit.Default)).DisposeWith(_disposables);
@@ -57,6 +58,14 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
            {
                CurrentStatus = status;
                HandleStatusUpdate(status);
+           })
+           .DisposeWith(_disposables);
+
+        SwitcherClient.Instance.SettingsUpdates
+           .ObserveOn(RxApp.MainThreadScheduler)
+           .Subscribe(newSettings =>
+           {
+               ShowIpOnScreen = newSettings.ShowIpOnScreen;
            })
            .DisposeWith(_disposables);
 
@@ -123,7 +132,12 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
         protected set => this.RaiseAndSetIfChanged(ref _stationLogo, value);
     }
 
-    public bool ShowIpOnScreen => Settings.ShowIpOnScreen;
+    private bool _showIpOnScreen;
+    public bool ShowIpOnScreen
+    {
+        get => _showIpOnScreen;
+        protected set => this.RaiseAndSetIfChanged(ref _showIpOnScreen, value);
+    }
 
     public bool FlashOnSelect => Settings.FlashOnSelect;
 

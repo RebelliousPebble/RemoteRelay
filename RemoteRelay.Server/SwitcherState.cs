@@ -31,7 +31,7 @@ public class SwitcherState : IDisposable
         _hubContext = hubContext;
         _logger = logger;
         _tcpMessageService = tcpMessageService;
-        InitializeState(settings);
+        InitializeState(settings, isStartup: true);
     }
 
     public AppSettings GetSettings()
@@ -57,7 +57,7 @@ public class SwitcherState : IDisposable
         {
             SetInactiveRelayToInactiveStateInternal();
             CleanupController();
-            InitializeStateInternal(newSettings);
+            InitializeStateInternal(newSettings, isStartup: false);
             stateSnapshot = GetSystemStateInternal();
         }
 
@@ -239,15 +239,15 @@ public class SwitcherState : IDisposable
         }
     }
 
-    private void InitializeState(AppSettings settings)
+    private void InitializeState(AppSettings settings, bool isStartup = false)
     {
         lock (_stateLock)
         {
-            InitializeStateInternal(settings);
+            InitializeStateInternal(settings, isStartup);
         }
     }
 
-    private void InitializeStateInternal(AppSettings settings)
+    private void InitializeStateInternal(AppSettings settings, bool isStartup = false)
     {
         settings.SourceColorPalette = GeneratePalette(settings.Sources);
         _settings = settings;
@@ -288,7 +288,11 @@ public class SwitcherState : IDisposable
 
         _outputCount = _settings.Outputs.Count;
 
-        ApplyDefaultRoutes();
+        if (isStartup)
+        {
+            ApplyDefaultRoutes();
+        }
+        
         InitializeInactiveRelayPin();
         SetupPhysicalButtons();
     }

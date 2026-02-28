@@ -330,15 +330,15 @@ public class MainWindowViewModel : ViewModelBase
                     }
                     else
                     {
-                        StartRetryTimer();
+                        Task.Run(() => StartRetryTimer());
                     }
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error in retry timer: {ex.Message}");
-                // Restart retry timer on error - don't let exceptions kill the reconnection loop
-                StartRetryTimer();
+                // Restart retry timer on error using scheduler to avoid deeply stacked tasks
+                Task.Run(() => StartRetryTimer());
             }
         };
         _retryTimer.Start();

@@ -101,7 +101,7 @@ public class SingleOutputViewModel : OperationViewModelBase
            }));
 
         // Off button – clears the selected input's routing
-        OffButton = new SourceButtonViewModel("Off");
+        OffButton = new SourceButtonViewModel("Unroute");
 
         Disposables.Add(OffButton.Clicked
            .WithLatestFrom(selected, (_, input) => input)
