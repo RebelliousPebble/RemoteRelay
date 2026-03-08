@@ -79,6 +79,13 @@ public class SetupViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _logoFile, value);
     }
 
+    private string _themePalette = "Default";
+    public string ThemePalette
+    {
+        get => _themePalette;
+        set => this.RaiseAndSetIfChanged(ref _themePalette, value);
+    }
+
     private string _statusMessage = string.Empty;
     public string StatusMessage
     {
@@ -93,6 +100,7 @@ public class SetupViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _isSaving, value);
     }
 
+    public ObservableCollection<string> AvailablePalettes { get; } = new(new[] { "Default", "Pastel", "Dark", "Vibrant", "Custom" });
     public ObservableCollection<InputConfigViewModel> Inputs { get; } = new();
 
     public ICommand AddInputCommand { get; }
@@ -295,6 +303,7 @@ public class SetupViewModel : ViewModelBase
         ShowIpOnScreen = settings.ShowIpOnScreen;
         Logging = settings.Logging;
         LogoFile = settings.LogoFile ?? string.Empty;
+        ThemePalette = settings.ThemePalette ?? "Default";
 
         if (settings.InactiveRelay != null)
         {
@@ -310,7 +319,13 @@ public class SetupViewModel : ViewModelBase
         Inputs.Clear();
         foreach (var group in sourceGroups)
         {
-            var inputVm = new InputConfigViewModel(group.Key, DeleteInput);
+            var customColor = string.Empty;
+            if (settings.SourceColorPalette?.TryGetValue(group.Key, out var color) == true)
+            {
+                customColor = color;
+            }
+
+            var inputVm = new InputConfigViewModel(group.Key, customColor, DeleteInput);
 
             // Add physical button config if exists
             if (settings.PhysicalSourceButtons?.TryGetValue(group.Key, out var buttonConfig) == true)
@@ -341,7 +356,7 @@ public class SetupViewModel : ViewModelBase
     private void AddInput()
     {
         var newName = $"Input {Inputs.Count + 1}";
-        var inputVm = new InputConfigViewModel(newName, DeleteInput);
+        var inputVm = new InputConfigViewModel(newName, string.Empty, DeleteInput);
         Inputs.Add(inputVm);
     }
 
@@ -392,6 +407,7 @@ public class SetupViewModel : ViewModelBase
             ShowIpOnScreen = ShowIpOnScreen,
             Logging = Logging,
             LogoFile = LogoFile,
+            ThemePalette = ThemePalette,
             Routes = new System.Collections.Generic.List<RelayConfig>(),
             DefaultRoutes = new System.Collections.Generic.Dictionary<string, string>(),
             PhysicalSourceButtons = new System.Collections.Generic.Dictionary<string, PhysicalButtonConfig>()
@@ -410,6 +426,11 @@ public class SetupViewModel : ViewModelBase
         // Build routes and other settings from inputs
         foreach (var input in Inputs)
         {
+            if (string.Equals(ThemePalette, "Custom", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(input.CustomColor))
+            {
+                settings.SourceColorPalette[input.SourceName] = input.CustomColor;
+            }
+
             // Add physical button config
             if (input.PhysicalButtonPin > 0)
             {

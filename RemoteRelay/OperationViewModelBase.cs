@@ -36,7 +36,7 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
     {
         Settings = settings;
         TimeoutSeconds = timeoutSeconds;
-        _showIpOnScreen = settings.ShowIpOnScreen;
+        ShowIpOnScreen = settings.ShowIpOnScreen;
         Cancel = new SourceButtonViewModel("Cancel");
 
         Cancel.Clicked.Subscribe(_ => _cancelRequests.OnNext(Unit.Default)).DisposeWith(_disposables);
@@ -136,7 +136,7 @@ public abstract class OperationViewModelBase : ViewModelBase, IDisposable
     public bool ShowIpOnScreen
     {
         get => _showIpOnScreen;
-        protected set => this.RaiseAndSetIfChanged(ref _showIpOnScreen, value);
+        set => this.RaiseAndSetIfChanged(ref _showIpOnScreen, value);
     }
 
     public bool FlashOnSelect => Settings.FlashOnSelect;

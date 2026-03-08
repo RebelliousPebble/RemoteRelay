@@ -79,6 +79,7 @@ public struct AppSettings
     public bool Logging { get; set; }
     public string LogoFile { get; set; }
     public bool UseMockGpio { get; set; }
+    public string ThemePalette { get; set; }
 
     // Parameterless constructor for struct initialization
     public AppSettings()
@@ -88,6 +89,7 @@ public struct AppSettings
         SourceColorPalette = new Dictionary<string, string>();
         Routes = new List<RelayConfig>();
         LogoFile = string.Empty;
+        ThemePalette = "Default";
         // DefaultSource, TcpMirrorAddress are nullable strings (default to null)
         // ServerPort, TcpMirrorPort are value types (default to 0 or null)
         // InactiveRelay is a nullable struct (defaults to null)

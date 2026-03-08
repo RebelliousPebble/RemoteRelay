@@ -249,7 +249,7 @@ public class SwitcherState : IDisposable
 
     private void InitializeStateInternal(AppSettings settings, bool isStartup = false)
     {
-        settings.SourceColorPalette = GeneratePalette(settings.Sources);
+        settings.SourceColorPalette = GeneratePalette(settings.Sources, settings.ThemePalette, settings.SourceColorPalette);
         _settings = settings;
 
         // Try to initialize real GPIO, fallback to mock if it fails
@@ -581,20 +581,47 @@ public class SwitcherState : IDisposable
         return Directory.Exists("/sys/class/gpio");
     }
 
-    private static Dictionary<string, string> GeneratePalette(IReadOnlyCollection<string> sources)
+    private static Dictionary<string, string> GeneratePalette(IReadOnlyCollection<string> sources, string themePalette = "Default", Dictionary<string, string>? existingPalette = null)
     {
         var palette = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (sources.Count == 0)
             return palette;
 
+        var isCustom = string.Equals(themePalette, "Custom", StringComparison.OrdinalIgnoreCase);
         var orderedSources = sources.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+
+        double saturation = 0.65;
+        double lightness = 0.5;
+
+        if (string.Equals(themePalette, "Pastel", StringComparison.OrdinalIgnoreCase))
+        {
+            saturation = 0.4;
+            lightness = 0.8;
+        }
+        else if (string.Equals(themePalette, "Dark", StringComparison.OrdinalIgnoreCase))
+        {
+            saturation = 0.7;
+            lightness = 0.3;
+        }
+        else if (string.Equals(themePalette, "Vibrant", StringComparison.OrdinalIgnoreCase))
+        {
+            saturation = 0.9;
+            lightness = 0.6;
+        }
 
         for (var index = 0; index < orderedSources.Count; index++)
         {
+            var sourceName = orderedSources[index];
+            if (isCustom && existingPalette != null && existingPalette.TryGetValue(sourceName, out var existingColor) && !string.IsNullOrWhiteSpace(existingColor))
+            {
+                palette[sourceName] = existingColor;
+                continue;
+            }
+
             var hue = 360.0 * index / orderedSources.Count;
-            var colour = FromHsl(hue / 360.0, 0.65, 0.5);
-            palette[orderedSources[index]] = colour;
+            var colour = FromHsl(hue / 360.0, saturation, lightness);
+            palette[sourceName] = colour;
         }
 
         return palette;

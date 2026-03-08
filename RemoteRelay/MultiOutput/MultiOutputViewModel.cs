@@ -302,7 +302,7 @@ public class MultiOutputViewModel : OperationViewModelBase
         {
             if (!palette.ContainsKey(source))
             {
-                palette[source] = GenerateFallbackColour(source);
+                palette[source] = GenerateFallbackColour(source, settings.ThemePalette);
             }
         }
 
@@ -316,7 +316,7 @@ public class MultiOutputViewModel : OperationViewModelBase
             return colour;
         }
 
-        var generated = GenerateFallbackColour(source);
+        var generated = GenerateFallbackColour(source, Settings.ThemePalette);
         _palette[source] = generated;
         return generated;
     }
@@ -336,13 +336,33 @@ public class MultiOutputViewModel : OperationViewModelBase
         }
     }
 
-    private static Color GenerateFallbackColour(string seed)
+    private static Color GenerateFallbackColour(string seed, string themePalette = "Default")
     {
         unchecked
         {
             var hash = seed.Aggregate(17, (current, c) => current * 31 + c);
             var hue = (hash % 360 + 360) % 360;
-            return FromHsl(hue / 360d, 0.6, 0.5);
+
+            double saturation = 0.6;
+            double lightness = 0.5;
+
+            if (string.Equals(themePalette, "Pastel", StringComparison.OrdinalIgnoreCase))
+            {
+                saturation = 0.4;
+                lightness = 0.8;
+            }
+            else if (string.Equals(themePalette, "Dark", StringComparison.OrdinalIgnoreCase))
+            {
+                saturation = 0.7;
+                lightness = 0.3;
+            }
+            else if (string.Equals(themePalette, "Vibrant", StringComparison.OrdinalIgnoreCase))
+            {
+                saturation = 0.9;
+                lightness = 0.6;
+            }
+
+            return FromHsl(hue / 360d, saturation, lightness);
         }
     }
 

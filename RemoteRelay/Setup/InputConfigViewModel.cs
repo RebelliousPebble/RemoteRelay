@@ -19,6 +19,13 @@ public class InputConfigViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _sourceName, value);
     }
 
+    private string _customColor = string.Empty;
+    public string CustomColor
+    {
+        get => _customColor;
+        set => this.RaiseAndSetIfChanged(ref _customColor, value);
+    }
+
     private int _physicalButtonPin;
     public int PhysicalButtonPin
     {
@@ -39,9 +46,10 @@ public class InputConfigViewModel : ViewModelBase
     public ICommand DeleteInputCommand { get; }
     public ICommand TestPhysicalButtonCommand { get; }
 
-    public InputConfigViewModel(string sourceName, Action<InputConfigViewModel> deleteAction)
+    public InputConfigViewModel(string sourceName, string customColor, Action<InputConfigViewModel> deleteAction)
     {
         _sourceName = sourceName;
+        _customColor = customColor;
         _deleteAction = deleteAction;
 
         AddOutputRouteCommand = ReactiveCommand.Create(AddOutputRoute);

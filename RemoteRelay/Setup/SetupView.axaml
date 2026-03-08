@@ -141,6 +141,8 @@
                                         <StackPanel Orientation="Horizontal" Spacing="10">
                                             <TextBlock Text="Input Name:" Classes="label"/>
                                             <TextBox Text="{Binding SourceName}" Width="200"/>
+                                            <TextBlock Text="Custom Color:" Classes="label"/>
+                                            <TextBox Text="{Binding CustomColor}" Watermark="#Hex or Name" Width="100"/>
                                         </StackPanel>
                                     </DockPanel>
 
@@ -214,6 +216,10 @@
                             <CheckBox IsChecked="{Binding FlashOnSelect}" Content="Flash On Select"/>
                             <CheckBox IsChecked="{Binding ShowIpOnScreen}" Content="Show IP On Screen"/>
                             <CheckBox IsChecked="{Binding Logging}" Content="Logging"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="Theme Palette:" Classes="label"/>
+                            <ComboBox ItemsSource="{Binding AvailablePalettes}" SelectedItem="{Binding ThemePalette}" Width="150"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <TextBlock Text="Logo File:" Classes="label"/>
