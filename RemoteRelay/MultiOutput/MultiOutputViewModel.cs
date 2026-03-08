@@ -81,7 +81,6 @@ public class MultiOutputViewModel : OperationViewModelBase
                     {
                         RestoreInputState(input);
                     }
-                    PushStatusMessage(string.Empty);
                 }
             }));
 
@@ -189,7 +188,7 @@ public class MultiOutputViewModel : OperationViewModelBase
             }
 
             UpdateOutputAvailability(null);
-            PushStatusMessage(string.Empty);
+            PushStatusMessage("No active routes");
             return;
         }
 
@@ -234,16 +233,20 @@ public class MultiOutputViewModel : OperationViewModelBase
 
         UpdateOutputAvailability(_activeSelection?.SourceName);
 
-        // Only show status for inputs that are visible (not filtered)
-        var visibleInputNames = Inputs.Select(i => i.SourceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var statusMessages = newStatus
-            .Where(pair => visibleInputNames.Contains(pair.Key))
+        // Show status for all active bindings
+        var activeRoutes = newStatus
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
             .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(pair => string.IsNullOrWhiteSpace(pair.Value)
-                ? $"{pair.Key} unrouted"
-                : $"{pair.Key} → {pair.Value}");
+            .Select(pair => $"{pair.Key} → {pair.Value}");
 
-        PushStatusMessage(string.Join("  |  ", statusMessages));
+        var statusText = string.Join("  |  ", activeRoutes);
+        
+        if (string.IsNullOrWhiteSpace(statusText))
+        {
+            statusText = "No active routes";
+        }
+        
+        PushStatusMessage(statusText);
     }
 
     protected override void HandleCancel()
@@ -290,19 +293,49 @@ public class MultiOutputViewModel : OperationViewModelBase
     {
         var palette = new Dictionary<string, Color>(StringComparer.OrdinalIgnoreCase);
 
+        var orderedSources = settings.Sources.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (orderedSources.Count > 0)
+        {
+            double saturation = 0.65; // Keeping this consistent with SwitcherState's old logic
+            double lightness = 0.5;
+
+            var themePalette = settings.ThemePalette ?? "Default";
+
+            if (string.Equals(themePalette, "Pastel", StringComparison.OrdinalIgnoreCase))
+            {
+                saturation = 0.4;
+                lightness = 0.8;
+            }
+            else if (string.Equals(themePalette, "Dark", StringComparison.OrdinalIgnoreCase))
+            {
+                saturation = 0.7;
+                lightness = 0.3;
+            }
+            else if (string.Equals(themePalette, "Vibrant", StringComparison.OrdinalIgnoreCase))
+            {
+                saturation = 0.9;
+                lightness = 0.6;
+            }
+
+            for (var index = 0; index < orderedSources.Count; index++)
+            {
+                var sourceName = orderedSources[index];
+                var hue = 360.0 * index / orderedSources.Count;
+                palette[sourceName] = FromHsl(hue / 360.0, saturation, lightness);
+            }
+        }
+
+        // Apply custom color overrides over the base theme palette
         if (settings.SourceColorPalette != null && settings.SourceColorPalette.Count > 0)
         {
             foreach (var kvp in settings.SourceColorPalette)
             {
-                palette[kvp.Key] = TryParseColour(kvp.Value);
-            }
-        }
-
-        foreach (var source in settings.Sources)
-        {
-            if (!palette.ContainsKey(source))
-            {
-                palette[source] = GenerateFallbackColour(source, settings.ThemePalette);
+                var colorStr = kvp.Value;
+                if (!string.IsNullOrWhiteSpace(colorStr))
+                {
+                    palette[kvp.Key] = TryParseColour(colorStr);
+                }
             }
         }
 

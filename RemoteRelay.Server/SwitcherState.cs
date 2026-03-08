@@ -55,9 +55,27 @@ public class SwitcherState : IDisposable
         Dictionary<string, string> stateSnapshot;
         lock (_stateLock)
         {
+            var previousState = GetSystemStateInternal();
+
             SetInactiveRelayToInactiveStateInternal();
             CleanupController();
             InitializeStateInternal(newSettings, isStartup: false);
+
+            // Restore active routes if they are still valid in the new configuration
+            foreach (var route in previousState)
+            {
+                if (!string.IsNullOrEmpty(route.Value))
+                {
+                    if (newSettings.Routes.Any(r => 
+                        string.Equals(r.SourceName, route.Key, StringComparison.OrdinalIgnoreCase) && 
+                        string.Equals(r.OutputName, route.Value, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Console.WriteLine($"Restoring active route: {route.Key} -> {route.Value}");
+                        SwitchSource(route.Key, route.Value);
+                    }
+                }
+            }
+
             stateSnapshot = GetSystemStateInternal();
         }
 
@@ -249,7 +267,6 @@ public class SwitcherState : IDisposable
 
     private void InitializeStateInternal(AppSettings settings, bool isStartup = false)
     {
-        settings.SourceColorPalette = GeneratePalette(settings.Sources, settings.ThemePalette, settings.SourceColorPalette);
         _settings = settings;
 
         // Try to initialize real GPIO, fallback to mock if it fails
@@ -579,85 +596,5 @@ public class SwitcherState : IDisposable
         // Check if GPIO is actually available on the system
         // On Linux, GPIO hardware is typically exposed via /sys/class/gpio
         return Directory.Exists("/sys/class/gpio");
-    }
-
-    private static Dictionary<string, string> GeneratePalette(IReadOnlyCollection<string> sources, string themePalette = "Default", Dictionary<string, string>? existingPalette = null)
-    {
-        var palette = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        if (sources.Count == 0)
-            return palette;
-
-        var isCustom = string.Equals(themePalette, "Custom", StringComparison.OrdinalIgnoreCase);
-        var orderedSources = sources.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
-
-        double saturation = 0.65;
-        double lightness = 0.5;
-
-        if (string.Equals(themePalette, "Pastel", StringComparison.OrdinalIgnoreCase))
-        {
-            saturation = 0.4;
-            lightness = 0.8;
-        }
-        else if (string.Equals(themePalette, "Dark", StringComparison.OrdinalIgnoreCase))
-        {
-            saturation = 0.7;
-            lightness = 0.3;
-        }
-        else if (string.Equals(themePalette, "Vibrant", StringComparison.OrdinalIgnoreCase))
-        {
-            saturation = 0.9;
-            lightness = 0.6;
-        }
-
-        for (var index = 0; index < orderedSources.Count; index++)
-        {
-            var sourceName = orderedSources[index];
-            if (isCustom && existingPalette != null && existingPalette.TryGetValue(sourceName, out var existingColor) && !string.IsNullOrWhiteSpace(existingColor))
-            {
-                palette[sourceName] = existingColor;
-                continue;
-            }
-
-            var hue = 360.0 * index / orderedSources.Count;
-            var colour = FromHsl(hue / 360.0, saturation, lightness);
-            palette[sourceName] = colour;
-        }
-
-        return palette;
-    }
-
-    private static string FromHsl(double h, double s, double l)
-    {
-        double r, g, b;
-
-        if (s.Equals(0))
-        {
-            r = g = b = l;
-        }
-        else
-        {
-            var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-            var p = 2 * l - q;
-            r = HueToRgb(p, q, h + 1.0 / 3);
-            g = HueToRgb(p, q, h);
-            b = HueToRgb(p, q, h - 1.0 / 3);
-        }
-
-        var red = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(r * 255)));
-        var green = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(g * 255)));
-        var blue = (byte)Math.Min(255, Math.Max(0, (int)Math.Round(b * 255)));
-
-        return $"#FF{red:X2}{green:X2}{blue:X2}";
-    }
-
-    private static double HueToRgb(double p, double q, double t)
-    {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1.0 / 6) return p + (q - p) * 6 * t;
-        if (t < 1.0 / 2) return q;
-        if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
-        return p;
     }
 }

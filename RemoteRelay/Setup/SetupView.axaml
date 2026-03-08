@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:RemoteRelay.Controls"
              xmlns:setup="clr-namespace:RemoteRelay.Setup"
              x:Class="RemoteRelay.Setup.SetupView"
              x:DataType="setup:SetupViewModel">
@@ -142,7 +143,8 @@
                                             <TextBlock Text="Input Name:" Classes="label"/>
                                             <TextBox Text="{Binding SourceName}" Width="200"/>
                                             <TextBlock Text="Custom Color:" Classes="label"/>
-                                            <TextBox Text="{Binding CustomColor}" Watermark="#Hex or Name" Width="100"/>
+                                            <ColorPicker Color="{Binding CustomColorValue}" />
+                                            <Button Content="Clear" Command="{Binding ClearColorCommand}" Classes="test-btn" IsVisible="{Binding CustomColor, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                         </StackPanel>
                                     </DockPanel>
 

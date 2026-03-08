@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using ReactiveUI;
 using System.Windows.Input;
+using Avalonia.Media;
 
 namespace RemoteRelay.Setup;
 
@@ -19,11 +20,35 @@ public class InputConfigViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _sourceName, value);
     }
 
+    private Color _customColorValue = Colors.LightGray;
+    public Color CustomColorValue
+    {
+        get => _customColorValue;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _customColorValue, value);
+            _customColor = value.ToString(); // Generates #AARRGGBB
+            this.RaisePropertyChanged(nameof(CustomColor));
+        }
+    }
+
     private string _customColor = string.Empty;
     public string CustomColor
     {
         get => _customColor;
-        set => this.RaiseAndSetIfChanged(ref _customColor, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _customColor, value);
+            if (!string.IsNullOrWhiteSpace(value) && Color.TryParse(value, out var parsedColor))
+            {
+                _customColorValue = parsedColor;
+            }
+            else
+            {
+                _customColorValue = Colors.LightGray;
+            }
+            this.RaisePropertyChanged(nameof(CustomColorValue));
+        }
     }
 
     private int _physicalButtonPin;
@@ -45,6 +70,7 @@ public class InputConfigViewModel : ViewModelBase
     public ICommand AddOutputRouteCommand { get; }
     public ICommand DeleteInputCommand { get; }
     public ICommand TestPhysicalButtonCommand { get; }
+    public ICommand ClearColorCommand { get; }
 
     public InputConfigViewModel(string sourceName, string customColor, Action<InputConfigViewModel> deleteAction)
     {
@@ -64,6 +90,8 @@ public class InputConfigViewModel : ViewModelBase
                 await SwitcherClient.Instance.TestPinAsync(PhysicalButtonPin, PhysicalButtonTrigger == "Low", false);
             }
         });
+
+        ClearColorCommand = ReactiveCommand.Create(() => CustomColor = string.Empty);
     }
 
     private void AddOutputRoute()

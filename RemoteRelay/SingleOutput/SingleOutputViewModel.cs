@@ -145,6 +145,8 @@ public class SingleOutputViewModel : OperationViewModelBase
         // Update screen to show the new system status
         if (newStatus.Count != 0)
         {
+            var activeRoutes = new List<string>();
+
             foreach (var pair in newStatus)
             {
                 var input = Inputs.FirstOrDefault(x => x.SourceName == pair.Key);
@@ -154,7 +156,7 @@ public class SingleOutputViewModel : OperationViewModelBase
                 {
                     Debug.WriteLine($"{pair.Key} is active");
                     input.SetState(SourceState.Active);
-                    PushStatusMessage($"{pair.Key} routed to {pair.Value}");
+                    activeRoutes.Add($"{pair.Key} routed to {pair.Value}");
                 }
                 // Set all others to inactive
                 else
@@ -164,10 +166,19 @@ public class SingleOutputViewModel : OperationViewModelBase
                 }
             }
 
+            if (activeRoutes.Count > 0)
+            {
+                PushStatusMessage(string.Join("  |  ", activeRoutes));
+            }
+            else
+            {
+                PushStatusMessage("No active routes");
+            }
+
         }
         else
         {
-            PushStatusMessage(string.Empty);
+            PushStatusMessage("No active routes");
         }
     }
 }

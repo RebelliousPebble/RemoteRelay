@@ -426,7 +426,7 @@ public class SetupViewModel : ViewModelBase
         // Build routes and other settings from inputs
         foreach (var input in Inputs)
         {
-            if (string.Equals(ThemePalette, "Custom", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(input.CustomColor))
+            if (!string.IsNullOrWhiteSpace(input.CustomColor))
             {
                 settings.SourceColorPalette[input.SourceName] = input.CustomColor;
             }
