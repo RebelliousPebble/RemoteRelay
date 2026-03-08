@@ -88,6 +88,7 @@ public static class AppSettingsValidator
 
         var validSources = new HashSet<string>(settings.Sources, StringComparer.OrdinalIgnoreCase);
         var validOutputs = new HashSet<string>(settings.Outputs, StringComparer.OrdinalIgnoreCase);
+        var seenOutputs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var pair in settings.DefaultRoutes)
         {
@@ -96,9 +97,16 @@ public static class AppSettingsValidator
                 errors.Add($"Default route references unknown source '{pair.Key}'.");
             }
 
-            if (!string.IsNullOrWhiteSpace(pair.Value) && !validOutputs.Contains(pair.Value))
+            if (!string.IsNullOrWhiteSpace(pair.Value))
             {
-                errors.Add($"Default route for source '{pair.Key}' references unknown output '{pair.Value}'.");
+                if (!validOutputs.Contains(pair.Value))
+                {
+                    errors.Add($"Default route for source '{pair.Key}' references unknown output '{pair.Value}'.");
+                }
+                else if (!seenOutputs.Add(pair.Value))
+                {
+                    errors.Add($"Multiple default routes reference the same output '{pair.Value}'.");
+                }
             }
         }
     }

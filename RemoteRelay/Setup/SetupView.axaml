@@ -183,7 +183,6 @@
                                                             <NumericUpDown Value="{Binding RelayPin}" Minimum="0" Maximum="40" Width="80"/>
                                                             
                                                             <CheckBox IsChecked="{Binding ActiveLow}" Content="Active Low" VerticalAlignment="Center" Margin="5,0"/>
-                                                            <CheckBox IsChecked="{Binding IsDefaultRoute}" Content="Default" VerticalAlignment="Center" Margin="5,0"/>
                                                             
                                                             <ToggleSwitch IsChecked="{Binding IsRelayOn}" 
                                                                           OnContent="ON" 
@@ -209,6 +208,24 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <!-- Default Routes Section -->
+                <TextBlock Text="═══ Default Routes ═══" Classes="section-header"/>
+                <Border Classes="card">
+                    <ItemsControl ItemsSource="{Binding DefaultRoutes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type setup:DefaultRouteViewModel}">
+                                <StackPanel Orientation="Horizontal" Spacing="15" Margin="0,5">
+                                    <TextBlock Text="{Binding SourceName}" Classes="label" Width="150"/>
+                                    <TextBlock Text="routes to" Classes="label"/>
+                                    <ComboBox ItemsSource="{Binding AvailableOutputs}" 
+                                              SelectedItem="{Binding SelectedOutput}" 
+                                              Width="200"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
 
                 <!-- General Options Section -->
                 <TextBlock Text="═══ General Options ═══" Classes="section-header"/>

@@ -32,13 +32,6 @@ public class RouteConfigViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _activeLow, value);
     }
 
-    private bool _isDefaultRoute;
-    public bool IsDefaultRoute
-    {
-        get => _isDefaultRoute;
-        set => this.RaiseAndSetIfChanged(ref _isDefaultRoute, value);
-    }
-
     private bool _isRelayOn;
     public bool IsRelayOn
     {
@@ -73,14 +66,12 @@ public class RouteConfigViewModel : ViewModelBase
         string outputName,
         int relayPin,
         bool activeLow,
-        bool isDefaultRoute,
         string tcpMessage,
         Func<Action<RouteConfigViewModel>> getDeleteAction)
     {
         _outputName = outputName;
         _relayPin = relayPin;
         _activeLow = activeLow;
-        _isDefaultRoute = isDefaultRoute;
         _tcpMessage = tcpMessage;
         _getDeleteAction = getDeleteAction;
 

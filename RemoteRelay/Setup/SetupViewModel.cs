@@ -102,6 +102,7 @@ public class SetupViewModel : ViewModelBase
 
     public ObservableCollection<string> AvailablePalettes { get; } = new(new[] { "Default", "Pastel", "Dark", "Vibrant", "Custom" });
     public ObservableCollection<InputConfigViewModel> Inputs { get; } = new();
+    public ObservableCollection<DefaultRouteViewModel> DefaultRoutes { get; } = new();
 
     public ICommand AddInputCommand { get; }
     public ICommand SaveCommand { get; }
@@ -337,19 +338,49 @@ public class SetupViewModel : ViewModelBase
             // Add output routes
             foreach (var route in group)
             {
-                var isDefault = settings.DefaultRoutes?.TryGetValue(route.SourceName, out var defaultOutput) == true
-                    && defaultOutput == route.OutputName;
-
                 inputVm.OutputRoutes.Add(new RouteConfigViewModel(
                     route.OutputName,
                     route.RelayPin,
                     route.ActiveLow,
-                    isDefault,
                     route.TcpMessage ?? string.Empty,
                     () => inputVm.RemoveRoute));
             }
 
             Inputs.Add(inputVm);
+
+            // Add default route VM
+            var defaultOutput = settings.DefaultRoutes?.TryGetValue(group.Key, out var val) == true ? val : "None";
+            DefaultRoutes.Add(new DefaultRouteViewModel(group.Key, defaultOutput));
+        }
+        
+        UpdateAvailableOutputsForDefaultRoutes();
+    }
+
+    private void UpdateAvailableOutputsForDefaultRoutes()
+    {
+        var allOutputs = Inputs.SelectMany(i => i.OutputRoutes)
+                               .Select(r => r.OutputName)
+                               .Where(n => !string.IsNullOrWhiteSpace(n))
+                               .Distinct()
+                               .ToList();
+        
+        allOutputs.Insert(0, "None");
+
+        foreach (var dr in DefaultRoutes)
+        {
+            var currentSelection = dr.SelectedOutput;
+            dr.AvailableOutputs.Clear();
+            foreach (var o in allOutputs)
+            {
+                dr.AvailableOutputs.Add(o);
+            }
+
+            if (currentSelection != null && !allOutputs.Contains(currentSelection))
+            {
+                dr.AvailableOutputs.Add(currentSelection);
+            }
+            
+            dr.SelectedOutput = currentSelection;
         }
     }
 
@@ -358,11 +389,19 @@ public class SetupViewModel : ViewModelBase
         var newName = $"Input {Inputs.Count + 1}";
         var inputVm = new InputConfigViewModel(newName, string.Empty, DeleteInput);
         Inputs.Add(inputVm);
+        DefaultRoutes.Add(new DefaultRouteViewModel(newName, "None"));
+        UpdateAvailableOutputsForDefaultRoutes();
     }
 
     private void DeleteInput(InputConfigViewModel input)
     {
         Inputs.Remove(input);
+        var drToRemove = DefaultRoutes.FirstOrDefault(dr => dr.SourceName == input.SourceName);
+        if (drToRemove != null)
+        {
+            DefaultRoutes.Remove(drToRemove);
+        }
+        UpdateAvailableOutputsForDefaultRoutes();
     }
 
     private async System.Threading.Tasks.Task SaveAsync()
@@ -373,7 +412,14 @@ public class SetupViewModel : ViewModelBase
         try
         {
             var settings = BuildSettings();
-            var response = await SwitcherClient.Instance.SaveConfigurationAsync(settings);
+            
+            if (settings is not AppSettings validSettings)
+            {
+                IsSaving = false;
+                return;
+            }
+
+            var response = await SwitcherClient.Instance.SaveConfigurationAsync(validSettings);
 
             if (response?.Success == true)
             {
@@ -396,7 +442,7 @@ public class SetupViewModel : ViewModelBase
         }
     }
 
-    private AppSettings BuildSettings()
+    private AppSettings? BuildSettings()
     {
         var settings = new AppSettings
         {
@@ -452,12 +498,20 @@ public class SetupViewModel : ViewModelBase
                     ActiveLow = route.ActiveLow,
                     TcpMessage = string.IsNullOrWhiteSpace(route.TcpMessage) ? null : route.TcpMessage
                 });
+            }
+        }
 
-                // Add default route if marked
-                if (route.IsDefaultRoute)
+        // Add default routes from DefaultRouteViewModels
+        foreach (var dr in DefaultRoutes)
+        {
+            if (!string.IsNullOrWhiteSpace(dr.SelectedOutput) && dr.SelectedOutput != "None")
+            {
+                if (settings.DefaultRoutes.ContainsValue(dr.SelectedOutput))
                 {
-                    settings.DefaultRoutes[input.SourceName] = route.OutputName;
+                    StatusMessage = $"Save Failed: Multiple inputs cannot route to the same default output '{dr.SelectedOutput}'.";
+                    return null;
                 }
+                settings.DefaultRoutes[dr.SourceName] = dr.SelectedOutput;
             }
         }
 
